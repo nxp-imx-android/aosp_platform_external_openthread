@@ -60,6 +60,7 @@
 #include <openthread/logging.h>
 
 #include "common/code_utils.hpp"
+#include "lib/spinel/spinel.h"
 
 #ifdef __APPLE__
 
@@ -125,8 +126,8 @@ namespace ot {
 namespace Posix {
 
 HdlcInterface::HdlcInterface(SpinelInterface::ReceiveFrameCallback aCallback,
-                             void *                                aCallbackContext,
-                             SpinelInterface::RxFrameBuffer &      aFrameBuffer)
+                             void                                 *aCallbackContext,
+                             SpinelInterface::RxFrameBuffer       &aFrameBuffer)
     : mReceiveFrameCallback(aCallback)
     , mReceiveFrameContext(aCallbackContext)
     , mReceiveFrameBuffer(aFrameBuffer)
@@ -137,11 +138,6 @@ HdlcInterface::HdlcInterface(SpinelInterface::ReceiveFrameCallback aCallback,
 {
     memset(&mInterfaceMetrics, 0, sizeof(mInterfaceMetrics));
     mInterfaceMetrics.mRcpInterfaceType = OT_POSIX_RCP_BUS_UART;
-}
-
-void HdlcInterface::OnRcpReset(void)
-{
-    mHdlcDecoder.Reset();
 }
 
 otError HdlcInterface::Init(const Url::Url &aRadioUrl)
@@ -177,15 +173,9 @@ exit:
     return error;
 }
 
-HdlcInterface::~HdlcInterface(void)
-{
-    Deinit();
-}
+HdlcInterface::~HdlcInterface(void) { Deinit(); }
 
-void HdlcInterface::Deinit(void)
-{
-    CloseFile();
-}
+void HdlcInterface::Deinit(void) { CloseFile(); }
 
 void HdlcInterface::Read(void)
 {
@@ -204,10 +194,7 @@ void HdlcInterface::Read(void)
     }
 }
 
-void HdlcInterface::Decode(const uint8_t *aBuffer, uint16_t aLength)
-{
-    mHdlcDecoder.Decode(aBuffer, aLength);
-}
+void HdlcInterface::Decode(const uint8_t *aBuffer, uint16_t aLength) { mHdlcDecoder.Decode(aBuffer, aLength); }
 
 otError HdlcInterface::SendFrame(const uint8_t *aFrame, uint16_t aLength)
 {
@@ -222,6 +209,12 @@ otError HdlcInterface::SendFrame(const uint8_t *aFrame, uint16_t aLength)
     error = Write(encoderBuffer.GetFrame(), encoderBuffer.GetLength());
 
 exit:
+    if ((error == OT_ERROR_NONE) && ot::Spinel::SpinelInterface::IsSpinelResetCommand(aFrame, aLength))
+    {
+        mHdlcDecoder.Reset();
+        error = ResetConnection();
+    }
+
     return error;
 }
 
@@ -341,25 +334,44 @@ exit:
     return error;
 }
 
-void HdlcInterface::UpdateFdSet(fd_set &aReadFdSet, fd_set &aWriteFdSet, int &aMaxFd, struct timeval &aTimeout)
+void HdlcInterface::UpdateFdSet(void *aMainloopContext)
 {
-    OT_UNUSED_VARIABLE(aWriteFdSet);
-    OT_UNUSED_VARIABLE(aTimeout);
+    otSysMainloopContext *context = reinterpret_cast<otSysMainloopContext *>(aMainloopContext);
 
-    FD_SET(mSockFd, &aReadFdSet);
+    assert(context != nullptr);
 
-    if (aMaxFd < mSockFd)
+    FD_SET(mSockFd, &context->mReadFdSet);
+
+    if (context->mMaxFd < mSockFd)
     {
-        aMaxFd = mSockFd;
+        context->mMaxFd = mSockFd;
     }
 }
 
-void HdlcInterface::Process(const RadioProcessContext &aContext)
+void HdlcInterface::Process(const void *aMainloopContext)
 {
-    if (FD_ISSET(mSockFd, aContext.mReadFdSet))
+#if OPENTHREAD_POSIX_VIRTUAL_TIME
+    /**
+     * Process read data (decode the data).
+     *
+     * Is intended only for virtual time simulation. Its behavior is similar to `Read()` but instead of
+     * reading the data from the radio socket, it uses the given data in @p `event`.
+     */
+    const VirtualTimeEvent *event = reinterpret_cast<const VirtualTimeEvent *>(aMainloopContext);
+
+    assert(event != nullptr);
+
+    Decode(event->mData, event->mDataLength);
+#else
+    const otSysMainloopContext *context = reinterpret_cast<const otSysMainloopContext *>(aMainloopContext);
+
+    assert(context != nullptr);
+
+    if (FD_ISSET(mSockFd, &context->mReadFdSet))
     {
         Read();
     }
+#endif
 }
 
 otError HdlcInterface::WaitForWritable(void)
@@ -437,7 +449,7 @@ int HdlcInterface::OpenFile(const Url::Url &aRadioUrl)
     if (isatty(fd))
     {
         struct termios tios;
-        const char *   value;
+        const char    *value;
         speed_t        speed;
 
         int      stopBit  = 1;
@@ -630,7 +642,7 @@ int HdlcInterface::ForkPty(const Url::Url &aRadioUrl)
     if (0 == pid)
     {
         constexpr int kMaxArguments = 32;
-        char *        argv[kMaxArguments + 1];
+        char         *argv[kMaxArguments + 1];
         size_t        index = 0;
 
         argv[index++] = const_cast<char *>(aRadioUrl.GetPath());

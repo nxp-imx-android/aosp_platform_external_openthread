@@ -81,19 +81,14 @@ uint32_t VendorInterface::GetBusSpeed(void) const
     return sHalInterface->GetBusSpeed();
 }
 
-void VendorInterface::OnRcpReset(void)
+void VendorInterface::UpdateFdSet(void *aMainloopContext)
 {
-    sHalInterface->OnRcpReset();
+    sHalInterface->UpdateFdSet(aMainloopContext);
 }
 
-void VendorInterface::UpdateFdSet(fd_set &aReadFdSet, fd_set &aWriteFdSet, int &aMaxFd, struct timeval &aTimeout)
+void VendorInterface::Process(const void *aMainloopContext)
 {
-    sHalInterface->UpdateFdSet(aReadFdSet, aWriteFdSet, aMaxFd, aTimeout);
-}
-
-void VendorInterface::Process(const RadioProcessContext &aContext)
-{
-    sHalInterface->Process(aContext);
+    sHalInterface->Process(aMainloopContext);
 }
 
 otError VendorInterface::WaitForFrame(uint64_t aTimeoutUs)
@@ -106,9 +101,14 @@ otError VendorInterface::SendFrame(const uint8_t *aFrame, uint16_t aLength)
     return sHalInterface->SendFrame(aFrame, aLength);
 }
 
-otError VendorInterface::ResetConnection(void)
+otError VendorInterface::HardwareReset(void)
 {
-    return sHalInterface->ResetConnection();
+    return sHalInterface->HardwareReset();
+}
+
+const otRcpInterfaceMetrics *VendorInterface::GetRcpInterfaceMetrics(void) const
+{
+    return nullptr;
 }
 } // namespace Posix
 } // namespace ot
