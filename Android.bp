@@ -397,6 +397,7 @@ filegroup {
         "examples/platforms/simulation/uart.c",
         "examples/platforms/utils/link_metrics.cpp",
         "examples/platforms/utils/mac_frame.cpp",
+        "examples/platforms/utils/settings_ram.c",
         "examples/platforms/utils/soft_source_match_table.c",
     ],
 }
@@ -660,9 +661,11 @@ cc_defaults {
         "-DOPENTHREAD_CONFIG_MLR_ENABLE=1",
         "-DOPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1",
         "-DOPENTHREAD_CONFIG_PING_SENDER_ENABLE=1",
+        "-DOPENTHREAD_CONFIG_PLATFORM_FLASH_API_ENABLE=0",
         "-DOPENTHREAD_EXAMPLES_SIMULATION=1",
         "-DOPENTHREAD_CONFIG_TCP_ENABLE=0",
         "-DOPENTHREAD_PROJECT_CORE_CONFIG_FILE=\"examples/platforms/simulation/openthread-core-simulation-config.h\"",
+        "-DOPENTHREAD_SETTINGS_RAM=1",
         "-DPACKAGE=\"openthread\"",
         "-DPACKAGE_BUGREPORT=\"openthread-devel@googlegroups.com\"",
         "-DPACKAGE_NAME=\"OPENTHREAD\"",
@@ -994,7 +997,4 @@ cc_binary {
     shared_libs: [
         "libcutils", // Required by src/core/instance_api.cpp
     ],
-
-    init_rc: ["src/android/ot-cli-ftd.rc"],
-    vendor: true,
 }
