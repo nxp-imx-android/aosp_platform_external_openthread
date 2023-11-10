@@ -45,10 +45,9 @@
 #define OPENTHREAD_CONFIG_CLI_UART_RX_BUFFER_SIZE 3500
 
 /**
- * Disables the default posix infrastructure interface implementation
- * so that we can can use the Android specific implementation.
+ * Enables the default posix infrastructure interface implementation.
  */
-#define OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE 0
+#define OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE 1
 
 /**
  * Disables the default posix TUN interface implementation
