@@ -54,7 +54,7 @@ namespace Posix {
  * This class defines an IPC Binder interface to the Radio Co-processor (RCP).
  *
  */
-class HalInterface
+class HalInterface : public ot::Spinel::SpinelInterface
 {
 public:
     /**
@@ -87,13 +87,13 @@ public:
      */
     otError Init(Spinel::SpinelInterface::ReceiveFrameCallback aCallback,
                  void                                         *aCallbackContext,
-                 Spinel::SpinelInterface::RxFrameBuffer       &aFrameBuffer);
+                 Spinel::SpinelInterface::RxFrameBuffer       &aFrameBuffer) override;
 
     /**
      * This method deinitializes the interface to the RCP.
      *
      */
-    void Deinit(void);
+    void Deinit(void) override;
 
     /**
      * This method encodes and sends a spinel frame to Radio Co-processor (RCP) over the socket.
@@ -107,7 +107,7 @@ public:
      * @retval OT_ERROR_FAILED   Failed to call the HAL to send the frame.
      *
      */
-    otError SendFrame(const uint8_t *aFrame, uint16_t aLength);
+    otError SendFrame(const uint8_t *aFrame, uint16_t aLength) override;
 
     /**
      * This method waits for receiving part or all of spinel frame within specified interval.
@@ -118,7 +118,7 @@ public:
      * @retval OT_ERROR_RESPONSE_TIMEOUT No spinel frame is received within @p aTimeout.
      *
      */
-    otError WaitForFrame(uint64_t aTimeoutUs);
+    otError WaitForFrame(uint64_t aTimeoutUs) override;
 
     /**
      * This method updates the file descriptor sets with file descriptors used by the radio driver.
@@ -126,7 +126,7 @@ public:
      * @param[in]   aMainloopContext  The context containing fd_sets.
      *
      */
-    void UpdateFdSet(void *aMainloopContext);
+    void UpdateFdSet(void *aMainloopContext) override;
 
     /**
      * This method performs radio driver processing.
@@ -134,7 +134,7 @@ public:
      * @param[in]   aMainloopContext  The context containing fd_sets.
      *
      */
-    void Process(const void *aMainloopContext);
+    void Process(const void *aMainloopContext) override;
 
     /**
      * This method returns the bus speed between the host and the radio.
@@ -142,7 +142,7 @@ public:
      * @returns   Bus speed in bits/second.
      *
      */
-    uint32_t GetBusSpeed(void) const;
+    uint32_t GetBusSpeed(void) const override;
 
     /**
      * This method hardware resets the RCP. It will be called after a software reset fails.
@@ -151,7 +151,15 @@ public:
      * @retval OT_ERROR_NOT_IMPLEMENT   The hardware reset is not implemented.
      *
      */
-    otError HardwareReset(void);
+    otError HardwareReset(void) override;
+
+    /**
+     * Returns the RCP interface metrics.
+     *
+     * @returns The RCP interface metrics.
+     *
+     */
+    const otRcpInterfaceMetrics *GetRcpInterfaceMetrics(void) const override { return &mInterfaceMetrics; }
 
 private:
     void        ReceiveFrameCallback(const std::vector<uint8_t> &aFrame);
@@ -184,6 +192,8 @@ private:
     Spinel::SpinelInterface::ReceiveFrameCallback mRxFrameCallback;
     void                                         *mRxFrameContext;
     Spinel::SpinelInterface::RxFrameBuffer       *mRxFrameBuffer;
+
+    otRcpInterfaceMetrics mInterfaceMetrics;
 
     std::shared_ptr<::aidl::android::hardware::threadnetwork::IThreadChip>         mThreadChip;
     std::shared_ptr<::aidl::android::hardware::threadnetwork::IThreadChipCallback> mThreadChipCallback;
