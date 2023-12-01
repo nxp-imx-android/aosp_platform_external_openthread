@@ -34,9 +34,9 @@
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/log.hpp"
+#include "instance/instance.hpp"
 #include "net/udp6.hpp"
 #include "thread/network_data_types.hpp"
 #include "thread/thread_netif.hpp"
@@ -48,11 +48,6 @@
 
 namespace ot {
 namespace Dns {
-
-#if OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE
-using ot::Encoding::BigEndian::ReadUint16;
-using ot::Encoding::BigEndian::WriteUint16;
-#endif
 
 RegisterLogModule("DnsClient");
 
@@ -1172,7 +1167,7 @@ Error Client::SendQuery(Query &aQuery, QueryInfo &aInfo, bool aUpdateTimer)
             PrepareTcpMessage(*message);
             break;
         case kTcpConnectedSending:
-            WriteUint16(length, mSendBufferBytes + mSendLink.mLength);
+            BigEndian::WriteUint16(length, mSendBufferBytes + mSendLink.mLength);
             SuccessOrAssert(error = message->Read(message->GetOffset(),
                                                   (mSendBufferBytes + sizeof(uint16_t) + mSendLink.mLength), length));
             IgnoreError(mEndpoint.SendByExtension(length + sizeof(uint16_t), /* aFlags */ 0));
@@ -1678,7 +1673,7 @@ void Client::PrepareTcpMessage(Message &aMessage)
     uint16_t length = aMessage.GetLength() - aMessage.GetOffset();
 
     // Prepending the DNS query with length of the packet according to RFC1035.
-    WriteUint16(length, mSendBufferBytes + mSendLink.mLength);
+    BigEndian::WriteUint16(length, mSendBufferBytes + mSendLink.mLength);
     SuccessOrAssert(
         aMessage.Read(aMessage.GetOffset(), (mSendBufferBytes + sizeof(uint16_t) + mSendLink.mLength), length));
     mSendLink.mLength += length + sizeof(uint16_t);
@@ -1788,7 +1783,7 @@ void Client::HandleTcpReceiveAvailable(otTcpEndpoint *aEndpoint,
         SuccessOrExit(ReadFromLinkBuffer(data, offset, *message, sizeof(uint16_t)));
 
         IgnoreError(message->Read(/* aOffset */ 0, length));
-        length = HostSwap16(length);
+        length = BigEndian::HostSwap16(length);
 
         // Try to read `length` bytes.
         IgnoreError(message->SetLength(0));

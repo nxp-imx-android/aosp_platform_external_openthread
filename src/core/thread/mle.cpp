@@ -41,12 +41,13 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/encoding.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/num_utils.hpp"
+#include "common/numeric_limits.hpp"
 #include "common/random.hpp"
 #include "common/serial_number.hpp"
 #include "common/settings.hpp"
+#include "instance/instance.hpp"
 #include "meshcop/meshcop.hpp"
 #include "meshcop/meshcop_tlvs.hpp"
 #include "net/netif.hpp"
@@ -58,8 +59,6 @@
 #include "thread/thread_netif.hpp"
 #include "thread/time_sync_service.hpp"
 #include "thread/version.hpp"
-
-using ot::Encoding::BigEndian::HostSwap16;
 
 namespace ot {
 namespace Mle {
@@ -124,27 +123,23 @@ Mle::Mle(Instance &aInstance)
     mLinkLocal64.InitAsThreadOrigin(/* aPreferred */ true);
     mLinkLocal64.GetAddress().SetToLinkLocalAddress(Get<Mac::Mac>().GetExtAddress());
 
-    mLeaderAloc.InitAsThreadOriginRealmLocalScope();
-
-    mMeshLocal64.InitAsThreadOriginRealmLocalScope();
+    mMeshLocal64.InitAsThreadOriginMeshLocal();
     mMeshLocal64.GetAddress().GetIid().GenerateRandom();
 
-    mMeshLocal16.InitAsThreadOriginRealmLocalScope();
+    mMeshLocal16.InitAsThreadOriginMeshLocal();
     mMeshLocal16.GetAddress().GetIid().SetToLocator(0);
     mMeshLocal16.mRloc = true;
 
     mLinkLocalAllThreadNodes.Clear();
-    mLinkLocalAllThreadNodes.GetAddress().mFields.m16[0] = HostSwap16(0xff32);
-    mLinkLocalAllThreadNodes.GetAddress().mFields.m16[7] = HostSwap16(0x0001);
+    mLinkLocalAllThreadNodes.GetAddress().mFields.m16[0] = BigEndian::HostSwap16(0xff32);
+    mLinkLocalAllThreadNodes.GetAddress().mFields.m16[7] = BigEndian::HostSwap16(0x0001);
 
     mRealmLocalAllThreadNodes.Clear();
-    mRealmLocalAllThreadNodes.GetAddress().mFields.m16[0] = HostSwap16(0xff33);
-    mRealmLocalAllThreadNodes.GetAddress().mFields.m16[7] = HostSwap16(0x0001);
+    mRealmLocalAllThreadNodes.GetAddress().mFields.m16[0] = BigEndian::HostSwap16(0xff33);
+    mRealmLocalAllThreadNodes.GetAddress().mFields.m16[7] = BigEndian::HostSwap16(0x0001);
 
+    mMeshLocalPrefix.Clear();
     SetMeshLocalPrefix(AsCoreType(&kMeshLocalPrefixInit));
-
-    // `SetMeshLocalPrefix()` also adds the Mesh-Local EID and subscribes
-    // to the Link- and Realm-Local All Thread Nodes multicast addresses.
 }
 
 Error Mle::Enable(void)
@@ -195,7 +190,11 @@ Error Mle::Start(StartMode aMode)
 
     SetStateDetached();
 
-    ApplyMeshLocalPrefix();
+    Get<ThreadNetif>().AddUnicastAddress(mMeshLocal64);
+
+    Get<ThreadNetif>().SubscribeMulticast(mLinkLocalAllThreadNodes);
+    Get<ThreadNetif>().SubscribeMulticast(mRealmLocalAllThreadNodes);
+
     SetRloc16(GetRloc16());
 
     mAttachCounter = 0;
@@ -654,7 +653,7 @@ uint32_t Mle::GetAttachStartDelay(void) const
         uint16_t       counter = mAttachCounter - 1;
         const uint32_t ratio   = kAttachBackoffMaxInterval / kAttachBackoffMinInterval;
 
-        if ((counter < sizeof(ratio) * CHAR_BIT) && ((1UL << counter) <= ratio))
+        if ((counter < BitSizeOf(ratio)) && ((1UL << counter) <= ratio))
         {
             delay = kAttachBackoffMinInterval;
             delay <<= counter;
@@ -693,10 +692,12 @@ void Mle::SetStateDetached(void)
     Get<BackboneRouter::Leader>().Reset();
 #endif
 
+#if OPENTHREAD_FTD
     if (IsLeader())
     {
-        Get<ThreadNetif>().RemoveUnicastAddress(mLeaderAloc);
+        Get<ThreadNetif>().RemoveUnicastAddress(Get<MleRouter>().mLeaderAloc);
     }
+#endif
 
     SetRole(kRoleDetached);
     SetAttachState(kAttachStateIdle);
@@ -719,10 +720,12 @@ void Mle::SetStateDetached(void)
 
 void Mle::SetStateChild(uint16_t aRloc16)
 {
+#if OPENTHREAD_FTD
     if (IsLeader())
     {
-        Get<ThreadNetif>().RemoveUnicastAddress(mLeaderAloc);
+        Get<ThreadNetif>().RemoveUnicastAddress(Get<MleRouter>().mLeaderAloc);
     }
+#endif
 
     SetRloc16(aRloc16);
     SetRole(kRoleChild);
@@ -888,28 +891,40 @@ void Mle::UpdateLinkLocalAddress(void)
 
 void Mle::SetMeshLocalPrefix(const Ip6::NetworkPrefix &aMeshLocalPrefix)
 {
-    VerifyOrExit(GetMeshLocalPrefix() != aMeshLocalPrefix,
-                 Get<Notifier>().SignalIfFirst(kEventThreadMeshLocalAddrChanged));
+    VerifyOrExit(mMeshLocalPrefix != aMeshLocalPrefix);
 
-    if (Get<ThreadNetif>().IsUp())
-    {
-        Get<ThreadNetif>().RemoveUnicastAddress(mLeaderAloc);
+    mMeshLocalPrefix = aMeshLocalPrefix;
 
-        // We must remove the old addresses before adding the new ones.
-        Get<ThreadNetif>().RemoveUnicastAddress(mMeshLocal64);
-        Get<ThreadNetif>().RemoveUnicastAddress(mMeshLocal16);
-        Get<ThreadNetif>().UnsubscribeMulticast(mLinkLocalAllThreadNodes);
-        Get<ThreadNetif>().UnsubscribeMulticast(mRealmLocalAllThreadNodes);
-    }
+    // We ask `ThreadNetif` to apply the new mesh-local prefix which
+    // will then update all of its assigned unicast addresses that are
+    // marked as mesh-local, as well as all of the subscribed mesh-local
+    // prefix-based multicast addresses (such as link-local or
+    // realm-local All Thread Nodes addresses). It is important to call
+    // `ApplyNewMeshLocalPrefix()` first so that `ThreadNetif` can
+    // correctly signal the updates. It will first signal the removal
+    // of the previous address based on the old prefix, and then the
+    // addition of the new address with the new mesh-local prefix.
 
-    mMeshLocal64.GetAddress().SetPrefix(aMeshLocalPrefix);
-    mMeshLocal16.GetAddress().SetPrefix(aMeshLocalPrefix);
-    mLeaderAloc.GetAddress().SetPrefix(aMeshLocalPrefix);
+    Get<ThreadNetif>().ApplyNewMeshLocalPrefix();
 
-    // Just keep mesh local prefix if network interface is down
-    VerifyOrExit(Get<ThreadNetif>().IsUp());
+    // Some of the addresses may already be updated from the
+    // `ApplyNewMeshLocalPrefix()` call, but we apply the new prefix to
+    // them in case they are not yet added to the `Netif`. This ensures
+    // that addresses are always updated and other modules can retrieve
+    // them using methods such as `GetMeshLocal16()`, `GetMeshLocal64()`
+    // or `GetLinkLocalAllThreadNodesAddress()`, even if they have not
+    // yet been added to the `Netif`.
 
-    ApplyMeshLocalPrefix();
+    mMeshLocal64.GetAddress().SetPrefix(mMeshLocalPrefix);
+    mMeshLocal16.GetAddress().SetPrefix(mMeshLocalPrefix);
+    mLinkLocalAllThreadNodes.GetAddress().SetMulticastNetworkPrefix(mMeshLocalPrefix);
+    mRealmLocalAllThreadNodes.GetAddress().SetMulticastNetworkPrefix(mMeshLocalPrefix);
+
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+    Get<BackboneRouter::Local>().ApplyNewMeshLocalPrefix();
+#endif
+
+    Get<Notifier>().Signal(kEventThreadMeshLocalAddrChanged);
 
 exit:
     return;
@@ -927,71 +942,6 @@ exit:
     return error;
 }
 #endif
-
-void Mle::ApplyMeshLocalPrefix(void)
-{
-    mLinkLocalAllThreadNodes.GetAddress().SetMulticastNetworkPrefix(GetMeshLocalPrefix());
-    mRealmLocalAllThreadNodes.GetAddress().SetMulticastNetworkPrefix(GetMeshLocalPrefix());
-
-    VerifyOrExit(!IsDisabled());
-
-    // Add the addresses back into the table.
-    Get<ThreadNetif>().AddUnicastAddress(mMeshLocal64);
-    Get<ThreadNetif>().SubscribeMulticast(mLinkLocalAllThreadNodes);
-    Get<ThreadNetif>().SubscribeMulticast(mRealmLocalAllThreadNodes);
-
-    if (IsAttached())
-    {
-        Get<ThreadNetif>().AddUnicastAddress(mMeshLocal16);
-    }
-
-    // update Leader ALOC
-    if (IsLeader())
-    {
-        Get<ThreadNetif>().AddUnicastAddress(mLeaderAloc);
-    }
-
-#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_COMMISSIONER_ENABLE
-    Get<MeshCoP::Commissioner>().ApplyMeshLocalPrefix();
-#endif
-
-#if OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
-    Get<MeshCoP::BorderAgent>().ApplyMeshLocalPrefix();
-#endif
-
-#if OPENTHREAD_CONFIG_DHCP6_SERVER_ENABLE
-    Get<Dhcp6::Server>().ApplyMeshLocalPrefix();
-#endif
-
-#if OPENTHREAD_CONFIG_NEIGHBOR_DISCOVERY_AGENT_ENABLE
-    Get<NeighborDiscovery::Agent>().ApplyMeshLocalPrefix();
-#endif
-
-#if OPENTHREAD_CONFIG_TMF_NETDATA_SERVICE_ENABLE
-    for (ServiceAloc &serviceAloc : mServiceAlocs)
-    {
-        if (serviceAloc.IsInUse())
-        {
-            Get<ThreadNetif>().RemoveUnicastAddress(serviceAloc);
-        }
-
-        serviceAloc.ApplyMeshLocalPrefix(GetMeshLocalPrefix());
-
-        if (serviceAloc.IsInUse())
-        {
-            Get<ThreadNetif>().AddUnicastAddress(serviceAloc);
-        }
-    }
-#endif
-
-#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    Get<BackboneRouter::Local>().ApplyMeshLocalPrefix();
-#endif
-
-exit:
-    // Changing the prefix also causes the mesh local address to be different.
-    Get<Notifier>().Signal(kEventThreadMeshLocalAddrChanged);
-}
 
 void Mle::SetRloc16(uint16_t aRloc16)
 {
@@ -1051,7 +1001,7 @@ Error Mle::GetLeaderAddress(Ip6::Address &aAddress) const
 
     VerifyOrExit(GetRloc16() != Mac::kShortAddrInvalid, error = kErrorDetached);
 
-    aAddress.SetToRoutingLocator(GetMeshLocalPrefix(), Rloc16FromRouterId(mLeaderData.GetLeaderRouterId()));
+    aAddress.SetToRoutingLocator(mMeshLocalPrefix, Rloc16FromRouterId(mLeaderData.GetLeaderRouterId()));
 
 exit:
     return error;
@@ -1075,7 +1025,7 @@ Error Mle::GetServiceAloc(uint8_t aServiceId, Ip6::Address &aAddress) const
     Error error = kErrorNone;
 
     VerifyOrExit(GetRloc16() != Mac::kShortAddrInvalid, error = kErrorDetached);
-    aAddress.SetToAnycastLocator(GetMeshLocalPrefix(), ServiceAlocFromId(aServiceId));
+    aAddress.SetToAnycastLocator(mMeshLocalPrefix, ServiceAlocFromId(aServiceId));
 
 exit:
     return error;
@@ -1271,7 +1221,7 @@ exit:
 
 Mle::ServiceAloc::ServiceAloc(void)
 {
-    InitAsThreadOriginRealmLocalScope();
+    InitAsThreadOriginMeshLocal();
     GetAddress().GetIid().SetToLocator(kNotInUse);
 }
 
@@ -2145,7 +2095,7 @@ Error Mle::SendChildUpdateRequest(ChildUpdateRequestMode aMode)
     destination.SetToLinkLocalAddress(mParent.GetExtAddress());
     SuccessOrExit(error = message->SendTo(destination));
 
-    Log(kMessageSend, kTypeChildUpdateRequestOfParent, destination);
+    Log(kMessageSend, kTypeChildUpdateRequestAsChild, destination);
 
     if (!IsRxOnWhenIdle())
     {
@@ -2166,12 +2116,13 @@ exit:
     return error;
 }
 
-Error Mle::SendChildUpdateResponse(const TlvList &aTlvList, const RxChallenge &aChallenge)
+Error Mle::SendChildUpdateResponse(const TlvList      &aTlvList,
+                                   const RxChallenge  &aChallenge,
+                                   const Ip6::Address &aDestination)
 {
-    Error        error = kErrorNone;
-    Ip6::Address destination;
-    TxMessage   *message;
-    bool         checkAddress = false;
+    Error      error = kErrorNone;
+    TxMessage *message;
+    bool       checkAddress = false;
 
     VerifyOrExit((message = NewMleMessage(kCommandChildUpdateResponse)) != nullptr, error = kErrorNoBufs);
     SuccessOrExit(error = message->AppendSourceAddressTlv());
@@ -2230,10 +2181,9 @@ Error Mle::SendChildUpdateResponse(const TlvList &aTlvList, const RxChallenge &a
         }
     }
 
-    destination.SetToLinkLocalAddress(mParent.GetExtAddress());
-    SuccessOrExit(error = message->SendTo(destination));
+    SuccessOrExit(error = message->SendTo(aDestination));
 
-    Log(kMessageSend, kTypeChildUpdateResponseOfParent, destination);
+    Log(kMessageSend, kTypeChildUpdateResponseAsChild, aDestination);
 
     if (checkAddress && HasUnregisteredAddress())
     {
@@ -2257,7 +2207,6 @@ void Mle::SendAnnounce(uint8_t aChannel, AnnounceMode aMode)
 void Mle::SendAnnounce(uint8_t aChannel, const Ip6::Address &aDestination, AnnounceMode aMode)
 {
     Error              error = kErrorNone;
-    ChannelTlv         channelTlv;
     MeshCoP::Timestamp activeTimestamp;
     TxMessage         *message = nullptr;
 
@@ -2266,10 +2215,7 @@ void Mle::SendAnnounce(uint8_t aChannel, const Ip6::Address &aDestination, Annou
     message->SetLinkSecurityEnabled(true);
     message->SetChannel(aChannel);
 
-    channelTlv.Init();
-    channelTlv.SetChannelPage(0);
-    channelTlv.SetChannel(Get<Mac::Mac>().GetPanChannel());
-    SuccessOrExit(error = channelTlv.AppendTo(*message));
+    SuccessOrExit(error = Tlv::Append<ChannelTlv>(*message, ChannelTlvValue(Get<Mac::Mac>().GetPanChannel())));
 
     switch (aMode)
     {
@@ -3521,7 +3467,7 @@ void Mle::HandleChildUpdateRequest(RxInfo &aRxInfo)
     // Source Address
     SuccessOrExit(error = Tlv::Find<SourceAddressTlv>(aRxInfo.mMessage, sourceAddress));
 
-    Log(kMessageReceive, kTypeChildUpdateRequestOfParent, aRxInfo.mMessageInfo.GetPeerAddr(), sourceAddress);
+    Log(kMessageReceive, kTypeChildUpdateRequestAsChild, aRxInfo.mMessageInfo.GetPeerAddr(), sourceAddress);
 
     // Challenge
     switch (aRxInfo.mMessage.ReadChallengeTlv(challenge))
@@ -3602,10 +3548,11 @@ void Mle::HandleChildUpdateRequest(RxInfo &aRxInfo)
     }
 #endif
 
-    SuccessOrExit(error = SendChildUpdateResponse(tlvList, challenge));
+    // Send the response to the requester, regardless if it's this device's parent or not
+    SuccessOrExit(error = SendChildUpdateResponse(tlvList, challenge, aRxInfo.mMessageInfo.GetPeerAddr()));
 
 exit:
-    LogProcessError(kTypeChildUpdateRequestOfParent, error);
+    LogProcessError(kTypeChildUpdateRequestAsChild, error);
 }
 
 void Mle::HandleChildUpdateResponse(RxInfo &aRxInfo)
@@ -3619,7 +3566,7 @@ void Mle::HandleChildUpdateResponse(RxInfo &aRxInfo)
     uint16_t    sourceAddress;
     uint32_t    timeout;
 
-    Log(kMessageReceive, kTypeChildUpdateResponseOfParent, aRxInfo.mMessageInfo.GetPeerAddr());
+    Log(kMessageReceive, kTypeChildUpdateResponseAsChild, aRxInfo.mMessageInfo.GetPeerAddr());
 
     switch (aRxInfo.mMessage.ReadResponseTlv(response))
     {
@@ -3760,13 +3707,13 @@ exit:
         }
     }
 
-    LogProcessError(kTypeChildUpdateResponseOfParent, error);
+    LogProcessError(kTypeChildUpdateResponseAsChild, error);
 }
 
 void Mle::HandleAnnounce(RxInfo &aRxInfo)
 {
     Error                     error = kErrorNone;
-    ChannelTlv                channelTlv;
+    ChannelTlvValue           channelTlvValue;
     MeshCoP::Timestamp        timestamp;
     const MeshCoP::Timestamp *localTimestamp;
     uint8_t                   channel;
@@ -3777,10 +3724,8 @@ void Mle::HandleAnnounce(RxInfo &aRxInfo)
 
     Log(kMessageReceive, kTypeAnnounce, aRxInfo.mMessageInfo.GetPeerAddr());
 
-    SuccessOrExit(error = Tlv::FindTlv(aRxInfo.mMessage, channelTlv));
-    VerifyOrExit(channelTlv.IsValid(), error = kErrorParse);
-
-    channel = static_cast<uint8_t>(channelTlv.GetChannel());
+    SuccessOrExit(error = Tlv::Find<ChannelTlv>(aRxInfo.mMessage, channelTlvValue));
+    channel = static_cast<uint8_t>(channelTlvValue.GetChannel());
 
     SuccessOrExit(error = Tlv::Find<ActiveTimestampTlv>(aRxInfo.mMessage, timestamp));
     SuccessOrExit(error = Tlv::Find<PanIdTlv>(aRxInfo.mMessage, panId));
@@ -3966,10 +3911,7 @@ bool Mle::IsAnycastLocator(const Ip6::Address &aAddress) const
     return IsMeshLocalAddress(aAddress) && aAddress.GetIid().IsAnycastLocator();
 }
 
-bool Mle::IsMeshLocalAddress(const Ip6::Address &aAddress) const
-{
-    return (aAddress.GetPrefix() == GetMeshLocalPrefix());
-}
+bool Mle::IsMeshLocalAddress(const Ip6::Address &aAddress) const { return (aAddress.GetPrefix() == mMeshLocalPrefix); }
 
 Error Mle::CheckReachability(uint16_t aMeshDest, const Ip6::Header &aIp6Header)
 {
@@ -4189,8 +4131,8 @@ const char *Mle::MessageTypeToString(MessageType aType)
         "Child ID Request",      // (2)  kTypeChildIdRequest
         "Child ID Request",      // (3)  kTypeChildIdRequestShort
         "Child ID Response",     // (4)  kTypeChildIdResponse
-        "Child Update Request",  // (5)  kTypeChildUpdateRequestOfParent
-        "Child Update Response", // (6)  kTypeChildUpdateResponseOfParent
+        "Child Update Request",  // (5)  kTypeChildUpdateRequestAsChild
+        "Child Update Response", // (6)  kTypeChildUpdateResponseAsChild
         "Data Request",          // (7)  kTypeDataRequest
         "Data Response",         // (8)  kTypeDataResponse
         "Discovery Request",     // (9)  kTypeDiscoveryRequest
@@ -4229,8 +4171,8 @@ const char *Mle::MessageTypeToString(MessageType aType)
     static_assert(kTypeChildIdRequest == 2, "kTypeChildIdRequest value is incorrect");
     static_assert(kTypeChildIdRequestShort == 3, "kTypeChildIdRequestShort value is incorrect");
     static_assert(kTypeChildIdResponse == 4, "kTypeChildIdResponse value is incorrect");
-    static_assert(kTypeChildUpdateRequestOfParent == 5, "kTypeChildUpdateRequestOfParent value is incorrect");
-    static_assert(kTypeChildUpdateResponseOfParent == 6, "kTypeChildUpdateResponseOfParent value is incorrect");
+    static_assert(kTypeChildUpdateRequestAsChild == 5, "kTypeChildUpdateRequestAsChild value is incorrect");
+    static_assert(kTypeChildUpdateResponseAsChild == 6, "kTypeChildUpdateResponseAsChild value is incorrect");
     static_assert(kTypeDataRequest == 7, "kTypeDataRequest value is incorrect");
     static_assert(kTypeDataResponse == 8, "kTypeDataResponse value is incorrect");
     static_assert(kTypeDiscoveryRequest == 9, "kTypeDiscoveryRequest value is incorrect");
@@ -4282,14 +4224,16 @@ const char *Mle::MessageTypeActionToSuffixString(MessageType aType, MessageActio
 {
     const char *str = "";
 
+    OT_UNUSED_VARIABLE(aAction); // Not currently used in non-FTD builds
+
     switch (aType)
     {
     case kTypeChildIdRequestShort:
         str = " - short";
         break;
-    case kTypeChildUpdateRequestOfParent:
-    case kTypeChildUpdateResponseOfParent:
-        str = (aAction == kMessageReceive) ? " from parent" : " to parent";
+    case kTypeChildUpdateRequestAsChild:
+    case kTypeChildUpdateResponseAsChild:
+        str = " as child";
         break;
     case kTypeParentRequestToRouters:
         str = " to routers";
@@ -4856,16 +4800,10 @@ exit:
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
 Error Mle::TxMessage::AppendCslChannelTlv(void)
 {
-    CslChannelTlv cslChannel;
-
     // CSL channel value of zero indicates that the CSL channel is not
     // specified. We can use this value in the TLV as well.
 
-    cslChannel.Init();
-    cslChannel.SetChannelPage(0);
-    cslChannel.SetChannel(Get<Mac::Mac>().GetCslChannel());
-
-    return Append(cslChannel);
+    return Tlv::Append<CslChannelTlv>(*this, ChannelTlvValue(Get<Mac::Mac>().GetCslChannel()));
 }
 
 Error Mle::TxMessage::AppendCslTimeoutTlv(void)
@@ -5013,6 +4951,28 @@ Error Mle::TxMessage::AppendActiveDatasetTlv(void)
 Error Mle::TxMessage::AppendPendingDatasetTlv(void)
 {
     return Get<MeshCoP::PendingDatasetManager>().AppendMleDatasetTlv(*this);
+}
+
+Error Mle::TxMessage::AppendSteeringDataTlv(void)
+{
+    Error                 error = kErrorNone;
+    MeshCoP::SteeringData steeringData;
+
+#if OPENTHREAD_CONFIG_MLE_STEERING_DATA_SET_OOB_ENABLE
+    if (!Get<MleRouter>().mSteeringData.IsEmpty())
+    {
+        steeringData = Get<MleRouter>().mSteeringData;
+    }
+    else
+#endif
+    {
+        SuccessOrExit(Get<NetworkData::Leader>().FindSteeringData(steeringData));
+    }
+
+    error = Tlv::Append<MeshCoP::SteeringDataTlv>(*this, steeringData.GetData(), steeringData.GetLength());
+
+exit:
+    return error;
 }
 
 #endif // OPENTHREAD_FTD

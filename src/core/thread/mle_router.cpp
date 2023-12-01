@@ -38,12 +38,12 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/encoding.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/num_utils.hpp"
 #include "common/random.hpp"
 #include "common/serial_number.hpp"
 #include "common/settings.hpp"
+#include "instance/instance.hpp"
 #include "mac/mac_types.hpp"
 #include "meshcop/meshcop.hpp"
 #include "net/icmp6.hpp"
@@ -95,6 +95,8 @@ MleRouter::MleRouter(Instance &aInstance)
 #else
     mLeaderWeight = kDefaultLeaderWeight;
 #endif
+
+    mLeaderAloc.InitAsThreadOriginMeshLocal();
 
     SetRouterId(kInvalidRouterId);
 
@@ -2312,8 +2314,8 @@ void MleRouter::HandleChildUpdateRequest(RxInfo &aRxInfo)
 #if OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
     if (child->IsCslSynchronized())
     {
-        CslChannelTlv cslChannel;
-        uint32_t      cslTimeout;
+        ChannelTlvValue cslChannelTlvValue;
+        uint32_t        cslTimeout;
 
         switch (Tlv::Find<CslTimeoutTlv>(aRxInfo.mMessage, cslTimeout))
         {
@@ -2328,13 +2330,11 @@ void MleRouter::HandleChildUpdateRequest(RxInfo &aRxInfo)
             ExitNow(error = kErrorNone);
         }
 
-        if (Tlv::FindTlv(aRxInfo.mMessage, cslChannel) == kErrorNone)
+        if (Tlv::Find<CslChannelTlv>(aRxInfo.mMessage, cslChannelTlvValue) == kErrorNone)
         {
-            VerifyOrExit(cslChannel.IsValid(), error = kErrorParse);
-
             // Special value of zero is used to indicate that
             // CSL channel is not specified.
-            child->SetCslChannel(static_cast<uint8_t>(cslChannel.GetChannel()));
+            child->SetCslChannel(static_cast<uint8_t>(cslChannelTlvValue.GetChannel()));
         }
     }
 #endif // OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
@@ -2738,7 +2738,7 @@ void MleRouter::HandleDiscoveryRequest(RxInfo &aRxInfo)
             else // if steering data is not set out of band, fall back to network data
 #endif
             {
-                VerifyOrExit(Get<NetworkData::Leader>().IsJoiningEnabled(), error = kErrorSecurity);
+                VerifyOrExit(Get<NetworkData::Leader>().IsJoiningAllowed(), error = kErrorSecurity);
             }
         }
     }
@@ -2808,26 +2808,7 @@ Error MleRouter::SendDiscoveryResponse(const Ip6::Address &aDestination, const M
     networkNameTlv.SetNetworkName(Get<MeshCoP::NetworkNameManager>().GetNetworkName().GetAsData());
     SuccessOrExit(error = networkNameTlv.AppendTo(*message));
 
-#if OPENTHREAD_CONFIG_MLE_STEERING_DATA_SET_OOB_ENABLE
-    // If steering data is set out of band, use that value.
-    // Otherwise use the one from commissioning data.
-    if (!mSteeringData.IsEmpty())
-    {
-        SuccessOrExit(error = Tlv::Append<MeshCoP::SteeringDataTlv>(*message, mSteeringData.GetData(),
-                                                                    mSteeringData.GetLength()));
-    }
-    else
-#endif
-    {
-        const MeshCoP::Tlv *steeringData;
-
-        steeringData = Get<NetworkData::Leader>().GetCommissioningDataSubTlv(MeshCoP::Tlv::kSteeringData);
-
-        if (steeringData != nullptr)
-        {
-            SuccessOrExit(error = steeringData->AppendTo(*message));
-        }
-    }
+    SuccessOrExit(error = message->AppendSteeringDataTlv());
 
     SuccessOrExit(
         error = Tlv::Append<MeshCoP::JoinerUdpPortTlv>(*message, Get<MeshCoP::JoinerRouter>().GetJoinerUdpPort()));
