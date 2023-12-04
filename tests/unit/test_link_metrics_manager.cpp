@@ -33,13 +33,13 @@
 #include "test_util.h"
 #include "common/array.hpp"
 #include "common/code_utils.hpp"
-#include "common/instance.hpp"
+#include "instance/instance.hpp"
 #include "mac/mac_types.hpp"
 #include "thread/child_table.hpp"
 
 namespace ot {
 
-static ot::Instance *sInstance;
+static Instance *sInstance;
 
 #if OPENTHREAD_CONFIG_LINK_METRICS_MANAGER_ENABLE
 
@@ -77,17 +77,17 @@ const TestChild UnitTester::mTestChildList[] = {
     {
         Child::kStateValid,
         {{0x10, 0x20, 0x03, 0x15, 0x10, 0x00, 0x60, 0x16}},
-        ot::kThreadVersion1p2,
+        kThreadVersion1p2,
     },
     {
         Child::kStateValid,
         {{0x10, 0x20, 0x03, 0x15, 0x10, 0x00, 0x60, 0x17}},
-        ot::kThreadVersion1p2,
+        kThreadVersion1p2,
     },
     {
         Child::kStateParentRequest,
         {{0x10, 0x20, 0x03, 0x15, 0x10, 0x00, 0x60, 0x18}},
-        ot::kThreadVersion1p2,
+        kThreadVersion1p2,
     },
 };
 

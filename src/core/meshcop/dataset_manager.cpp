@@ -37,10 +37,10 @@
 #include <stdio.h>
 
 #include "common/as_core_type.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/log.hpp"
 #include "common/notifier.hpp"
+#include "instance/instance.hpp"
 #include "meshcop/meshcop.hpp"
 #include "meshcop/meshcop_tlvs.hpp"
 #include "radio/radio.hpp"
@@ -226,7 +226,7 @@ Error DatasetManager::GetChannelMask(Mac::ChannelMask &aChannelMask) const
 
     SuccessOrExit(error = Read(dataset));
 
-    channelMaskTlv = dataset.GetTlv<ChannelMaskTlv>();
+    channelMaskTlv = As<ChannelMaskTlv>(dataset.FindTlv(Tlv::kChannelMask));
     VerifyOrExit(channelMaskTlv != nullptr, error = kErrorNotFound);
     VerifyOrExit((mask = channelMaskTlv->GetChannelMask()) != 0);
 
@@ -418,7 +418,7 @@ void DatasetManager::SendGetResponse(const Coap::Message    &aRequest,
                 continue;
             }
 
-            if ((tlv = dataset.GetTlv(static_cast<Tlv::Type>(aTlvs[index]))) != nullptr)
+            if ((tlv = dataset.FindTlv(static_cast<Tlv::Type>(aTlvs[index]))) != nullptr)
             {
                 SuccessOrExit(error = tlv->AppendTo(*message));
             }
@@ -738,41 +738,42 @@ exit:
 
 void PendingDatasetManager::StartDelayTimer(void)
 {
-    DelayTimerTlv *delayTimer;
-    Dataset        dataset;
+    Tlv     *tlv;
+    uint32_t delay;
+    Dataset  dataset;
 
     IgnoreError(Read(dataset));
 
     mDelayTimer.Stop();
 
-    if ((delayTimer = dataset.GetTlv<DelayTimerTlv>()) != nullptr)
-    {
-        uint32_t delay = delayTimer->GetDelayTimer();
+    tlv = dataset.FindTlv(Tlv::kDelayTimer);
+    VerifyOrExit(tlv != nullptr);
 
-        // the Timer implementation does not support the full 32 bit range
-        if (delay > Timer::kMaxDelay)
-        {
-            delay = Timer::kMaxDelay;
-        }
+    delay = tlv->ReadValueAs<DelayTimerTlv>();
 
-        mDelayTimer.StartAt(dataset.GetUpdateTime(), delay);
-        LogInfo("delay timer started %lu", ToUlong(delay));
-    }
+    // the Timer implementation does not support the full 32 bit range
+    delay = Min(delay, Timer::kMaxDelay);
+
+    mDelayTimer.StartAt(dataset.GetUpdateTime(), delay);
+    LogInfo("delay timer started %lu", ToUlong(delay));
+
+exit:
+    return;
 }
 
 void PendingDatasetManager::HandleDelayTimer(void)
 {
-    DelayTimerTlv *delayTimer;
-    Dataset        dataset;
+    Tlv    *tlv;
+    Dataset dataset;
 
     IgnoreError(Read(dataset));
 
     // if the Delay Timer value is larger than what our Timer implementation can handle, we have to compute
     // the remainder and wait some more.
-    if ((delayTimer = dataset.GetTlv<DelayTimerTlv>()) != nullptr)
+    if ((tlv = dataset.FindTlv(Tlv::kDelayTimer)) != nullptr)
     {
         uint32_t elapsed = mDelayTimer.GetFireTime() - dataset.GetUpdateTime();
-        uint32_t delay   = delayTimer->GetDelayTimer();
+        uint32_t delay   = tlv->ReadValueAs<DelayTimerTlv>();
 
         if (elapsed < delay)
         {

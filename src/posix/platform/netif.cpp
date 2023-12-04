@@ -291,39 +291,21 @@ static bool sIsSyncingState = false;
 
 #define OPENTHREAD_POSIX_LOG_TUN_PACKETS 0
 
-#if !defined(__linux__)
-static bool UnicastAddressIsSubscribed(otInstance *aInstance, const otNetifAddress *netAddr)
-{
-    const otNetifAddress *address = otIp6GetUnicastAddresses(aInstance);
-
-    while (address != nullptr)
-    {
-        if (memcmp(address->mAddress.mFields.m8, netAddr->mAddress.mFields.m8, sizeof(address->mAddress.mFields.m8)) ==
-            0)
-        {
-            return true;
-        }
-
-        address = address->mNext;
-    }
-
-    return false;
-}
-#endif
-
 #if defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__)
 static const uint8_t allOnes[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
                                   0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+#define BITS_PER_BYTE 8
+#define MAX_PREFIX_LENGTH (OT_IP6_ADDRESS_SIZE * BITS_PER_BYTE)
+
 static void InitNetaskWithPrefixLength(struct in6_addr *address, uint8_t prefixLen)
 {
-#define MAX_PREFIX_LENGTH (OT_IP6_ADDRESS_SIZE * CHAR_BIT)
+    ot::Ip6::Address addr;
+
     if (prefixLen > MAX_PREFIX_LENGTH)
     {
         prefixLen = MAX_PREFIX_LENGTH;
     }
-
-    ot::Ip6::Address addr;
 
     addr.Clear();
     addr.SetPrefix(allOnes, prefixLen);
@@ -918,6 +900,7 @@ exit:
 static void processNat64StateChange(void)
 {
     otIp4Cidr translatorCidr;
+    otError   error = OT_ERROR_NONE;
 
     // Skip if NAT64 translator has not been configured with a CIDR.
     SuccessOrExit(otNat64GetCidr(gInstance, &translatorCidr));
@@ -928,7 +911,10 @@ static void processNat64StateChange(void)
 
         if (sActiveNat64Cidr.mLength != 0)
         {
-            DeleteIp4Route(sActiveNat64Cidr);
+            if ((error = DeleteIp4Route(sActiveNat64Cidr)) != OT_ERROR_NONE)
+            {
+                otLogWarnPlat("[netif] failed to delete route for NAT64: %s", otThreadErrorToString(error));
+            }
         }
         sActiveNat64Cidr = translatorCidr;
 
@@ -938,12 +924,18 @@ static void processNat64StateChange(void)
 
     if (otNat64GetTranslatorState(gInstance) == OT_NAT64_STATE_ACTIVE)
     {
-        AddIp4Route(sActiveNat64Cidr, kNat64RoutePriority);
+        if ((error = AddIp4Route(sActiveNat64Cidr, kNat64RoutePriority)) != OT_ERROR_NONE)
+        {
+            otLogWarnPlat("[netif] failed to add route for NAT64: %s", otThreadErrorToString(error));
+        }
         otLogInfoPlat("[netif] Adding route for NAT64");
     }
     else if (sActiveNat64Cidr.mLength > 0) // Translator is not active.
     {
-        DeleteIp4Route(sActiveNat64Cidr);
+        if ((error = DeleteIp4Route(sActiveNat64Cidr)) != OT_ERROR_NONE)
+        {
+            otLogWarnPlat("[netif] failed to delete route for NAT64: %s", otThreadErrorToString(error));
+        }
         otLogInfoPlat("[netif] Deleting route for NAT64");
     }
 
@@ -1319,7 +1311,10 @@ static void processNetifLinkEvent(otInstance *aInstance, struct nlmsghdr *aNetli
     if (isUp && sActiveNat64Cidr.mLength > 0)
     {
         // Recover NAT64 route.
-        AddIp4Route(sActiveNat64Cidr, kNat64RoutePriority);
+        if ((error = AddIp4Route(sActiveNat64Cidr, kNat64RoutePriority)) != OT_ERROR_NONE)
+        {
+            otLogWarnPlat("[netif] failed to add route for NAT64: %s", otThreadErrorToString(error));
+        }
     }
 #endif
 
@@ -1435,14 +1430,11 @@ static void processNetifAddrEvent(otInstance *aInstance, struct rt_msghdr *rtm)
             if (!addr.IsMulticast())
             {
                 otNetifAddress netAddr;
-                bool           subscribed;
 
                 netAddr.mAddress      = addr;
                 netAddr.mPrefixLength = NetmaskToPrefixLength(&netmask);
 
-                subscribed = UnicastAddressIsSubscribed(aInstance, &netAddr);
-
-                if (subscribed)
+                if (otIp6HasUnicastAddress(aInstance, &addr))
                 {
                     logAddrEvent(/* isAdd */ true, addr, OT_ERROR_ALREADY);
                     error = OT_ERROR_NONE;
@@ -1659,7 +1651,18 @@ static void processNetlinkEvent(otInstance *aInstance)
 
     length = recv(sNetlinkFd, msgBuffer.buffer, sizeof(msgBuffer.buffer), 0);
 
-    VerifyOrExit(length > 0);
+#if defined(__linux__)
+#define HEADER_SIZE sizeof(nlmsghdr)
+#else
+#define HEADER_SIZE sizeof(rt_msghdr)
+#endif
+
+    // Ensures full netlink header is received
+    if (length < static_cast<ssize_t>(HEADER_SIZE))
+    {
+        otLogWarnPlat("[netif] Unexpected netlink recv() result: %ld", static_cast<long>(length));
+        ExitNow();
+    }
 
 #if defined(__linux__)
     for (struct nlmsghdr *msg = &msgBuffer.nlMsg; NLMSG_OK(msg, static_cast<size_t>(length));
@@ -1677,6 +1680,12 @@ static void processNetlinkEvent(otInstance *aInstance)
 #endif
         switch (msg->nlmsg_type)
         {
+#if defined(__linux__)
+        case NLMSG_DONE:
+            // NLMSG_DONE indicates the end of the netlink message, exits now
+            ExitNow();
+#endif
+
         case RTM_NEWADDR:
         case RTM_DELADDR:
             processNetifAddrEvent(aInstance, msg);
@@ -2084,10 +2093,14 @@ void platformNetifInit(otPlatformConfig *aPlatformConfig)
 void nat64Init(void)
 {
     otIp4Cidr cidr;
+    otError   error = OT_ERROR_NONE;
 
     if (otIp4CidrFromString(OPENTHREAD_POSIX_CONFIG_NAT64_CIDR, &cidr) == OT_ERROR_NONE && cidr.mLength != 0)
     {
-        otNat64SetIp4Cidr(gInstance, &cidr);
+        if ((error = otNat64SetIp4Cidr(gInstance, &cidr)) != OT_ERROR_NONE)
+        {
+            otLogWarnPlat("[netif] failed to set CIDR for NAT64: %s", otThreadErrorToString(error));
+        }
     }
     else
     {

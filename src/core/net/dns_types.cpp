@@ -35,15 +35,13 @@
 
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
-#include "common/instance.hpp"
 #include "common/num_utils.hpp"
 #include "common/random.hpp"
 #include "common/string.hpp"
+#include "instance/instance.hpp"
 
 namespace ot {
 namespace Dns {
-
-using ot::Encoding::BigEndian::HostSwap16;
 
 Error Header::SetRandomMessageId(void)
 {
@@ -244,7 +242,7 @@ Error Name::AppendPointerLabel(uint16_t aOffset, Message &aMessage)
 
     OT_ASSERT(aOffset < kPointerLabelTypeUint16);
 
-    value = HostSwap16(aOffset | kPointerLabelTypeUint16);
+    value = BigEndian::HostSwap16(aOffset | kPointerLabelTypeUint16);
 
     ExitNow(error = aMessage.Append(value));
 
@@ -528,7 +526,7 @@ Error Name::LabelIterator::GetNextLabel(void)
 
             // `mMessage.GetOffset()` must point to the start of the
             // DNS header.
-            nextLabelOffset = mMessage.GetOffset() + (HostSwap16(pointerValue) & kPointerLabelOffsetMask);
+            nextLabelOffset = mMessage.GetOffset() + (BigEndian::HostSwap16(pointerValue) & kPointerLabelOffsetMask);
             VerifyOrExit(nextLabelOffset < mNextLabelOffset, error = kErrorParse);
             mNextLabelOffset = nextLabelOffset;
 
@@ -953,7 +951,7 @@ Error TxtEntry::Iterator::GetNextEntry(TxtEntry &aEntry)
     const char *cur;
     char       *keyBuffer = GetKeyBuffer();
 
-    static_assert(sizeof(mChar) == TxtEntry::kMaxKeyLength + 1, "KeyBuffer cannot fit the max key length");
+    static_assert(sizeof(mChar) >= TxtEntry::kMaxKeyLength + 1, "KeyBuffer cannot fit the max key length");
 
     VerifyOrExit(GetTxtData() != nullptr, error = kErrorParse);
 
@@ -985,9 +983,9 @@ Error TxtEntry::Iterator::GetNextEntry(TxtEntry &aEntry)
                 ExitNow();
             }
 
-            if (index >= kMaxKeyLength)
+            if (index >= sizeof(mChar) - 1)
             {
-                // The key is larger than recommended max key length.
+                // The key is larger than supported key string length.
                 // In this case, we return the full encoded string in
                 // `mValue` and `mValueLength` and set `mKey` to
                 // `nullptr`.

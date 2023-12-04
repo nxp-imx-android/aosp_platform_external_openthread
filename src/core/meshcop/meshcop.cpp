@@ -1,3 +1,4 @@
+
 /*
  *  Copyright (c) 2017, The OpenThread Authors.
  *  All rights reserved.
@@ -118,7 +119,7 @@ bool JoinerDiscerner::Matches(const Mac::ExtAddress &aJoinerId) const
 
     mask = GetMask();
 
-    return (Encoding::BigEndian::ReadUint64(aJoinerId.m8) & mask) == (mValue & mask);
+    return (BigEndian::ReadUint64(aJoinerId.m8) & mask) == (mValue & mask);
 }
 
 void JoinerDiscerner::CopyTo(Mac::ExtAddress &aExtAddress) const
@@ -135,12 +136,12 @@ void JoinerDiscerner::CopyTo(Mac::ExtAddress &aExtAddress) const
     OT_ASSERT(IsValid());
 
     // Write full bytes
-    while (remaining >= CHAR_BIT)
+    while (remaining >= kBitsPerByte)
     {
         *cur = static_cast<uint8_t>(value & 0xff);
-        value >>= CHAR_BIT;
+        value >>= kBitsPerByte;
         cur--;
-        remaining -= CHAR_BIT;
+        remaining -= kBitsPerByte;
     }
 
     // Write any remaining bits (not a full byte)
@@ -167,11 +168,11 @@ JoinerDiscerner::InfoString JoinerDiscerner::ToString(void) const
 {
     InfoString string;
 
-    if (mLength <= sizeof(uint16_t) * CHAR_BIT)
+    if (mLength <= BitSizeOf(uint16_t))
     {
         string.Append("0x%04x", static_cast<uint16_t>(mValue));
     }
-    else if (mLength <= sizeof(uint32_t) * CHAR_BIT)
+    else if (mLength <= BitSizeOf(uint32_t))
     {
         string.Append("0x%08lx", ToUlong(static_cast<uint32_t>(mValue)));
     }
@@ -298,21 +299,6 @@ void ComputeJoinerId(const Mac::ExtAddress &aEui64, Mac::ExtAddress &aJoinerId)
 
     memcpy(&aJoinerId, hash.GetBytes(), sizeof(aJoinerId));
     aJoinerId.SetLocal(true);
-}
-
-Error GetBorderAgentRloc(ThreadNetif &aNetif, uint16_t &aRloc)
-{
-    Error                        error = kErrorNone;
-    const BorderAgentLocatorTlv *borderAgentLocator;
-
-    borderAgentLocator = As<BorderAgentLocatorTlv>(
-        aNetif.Get<NetworkData::Leader>().GetCommissioningDataSubTlv(Tlv::kBorderAgentLocator));
-    VerifyOrExit(borderAgentLocator != nullptr, error = kErrorNotFound);
-
-    aRloc = borderAgentLocator->GetBorderAgentLocator();
-
-exit:
-    return error;
 }
 
 #if OPENTHREAD_FTD

@@ -44,13 +44,13 @@
 
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/log.hpp"
 #include "common/num_utils.hpp"
 #include "common/numeric_limits.hpp"
 #include "common/random.hpp"
 #include "common/settings.hpp"
+#include "instance/instance.hpp"
 #include "meshcop/extended_panid.hpp"
 #include "net/ip6.hpp"
 #include "net/nat64_translator.hpp"
@@ -186,7 +186,6 @@ void RoutingManager::UpdateRioPreference(RoutePreference aPreference)
             RoutePreferenceToString(aPreference));
     mRioPreference = aPreference;
 
-    VerifyOrExit(mIsRunning);
     ScheduleRoutingPolicyEvaluation(kAfterRandomDelay);
 
 exit:
@@ -343,6 +342,9 @@ void RoutingManager::Start(void)
         mOmrPrefixManager.Start();
         mRoutePublisher.Start();
         mRsSender.Start();
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_DHCP6_PD_ENABLE
+        mPdPrefixManager.Start();
+#endif
 #if OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE
         mNat64PrefixManager.Start();
 #endif
@@ -355,14 +357,20 @@ void RoutingManager::Stop(void)
 
     mOmrPrefixManager.Stop();
     mOnLinkPrefixManager.Stop();
-
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_DHCP6_PD_ENABLE
+    mPdPrefixManager.Stop();
+#endif
 #if OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE
     mNat64PrefixManager.Stop();
 #endif
 
     SendRouterAdvertisement(kInvalidateAllPrevPrefixes);
 
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_USE_HEAP_ENABLE
+    mAdvertisedPrefixes.Free();
+#else
     mAdvertisedPrefixes.Clear();
+#endif
 
     mDiscoveredPrefixTable.RemoveAllEntries();
     mDiscoveredPrefixStaleTimer.Stop();
@@ -540,6 +548,8 @@ void RoutingManager::ScheduleRoutingPolicyEvaluation(ScheduleMode aMode)
     uint32_t  delay = 0;
     TimeMilli evaluateTime;
 
+    VerifyOrExit(mIsRunning);
+
     switch (aMode)
     {
     case kImmediately:
@@ -586,6 +596,9 @@ void RoutingManager::ScheduleRoutingPolicyEvaluation(ScheduleMode aMode)
         }
     }
 #endif
+
+exit:
+    return;
 }
 
 void RoutingManager::SendRouterAdvertisement(RouterAdvTxMode aRaTxMode)
@@ -611,6 +624,12 @@ void RoutingManager::SendRouterAdvertisement(RouterAdvTxMode aRaTxMode)
     NetworkData::OnMeshPrefixConfig prefixConfig;
 
     LogInfo("Preparing RA");
+
+    mDiscoveredPrefixTable.DetermineAndSetFlags(raMsg);
+
+    LogInfo("- RA Header - flags - M:%u O:%u", raMsg.GetHeader().IsManagedAddressConfigFlagSet(),
+            raMsg.GetHeader().IsOtherConfigFlagSet());
+    LogInfo("- RA Header - default route - lifetime:%u", raMsg.GetHeader().GetRouterLifetime());
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_STUB_ROUTER_FLAG_IN_EMITTED_RA_ENABLE
     SuccessOrAssert(raMsg.AppendFlagsExtensionOption(/* aStubRouterFlag */ true));
@@ -1234,7 +1253,7 @@ void RoutingManager::DiscoveredPrefixTable::ProcessRouterAdvertMessage(const Ip6
 
     UpdateRouterOnRx(*router);
 
-    RemoveRoutersWithNoEntries();
+    RemoveRoutersWithNoEntriesOrFlags();
 
 exit:
     return;
@@ -1464,7 +1483,7 @@ void RoutingManager::DiscoveredPrefixTable::RemovePrefix(const Entry::Matcher &a
     VerifyOrExit(!removedEntries.IsEmpty());
 
     FreeEntries(removedEntries);
-    RemoveRoutersWithNoEntries();
+    RemoveRoutersWithNoEntriesOrFlags();
 
     SignalTableChanged();
 
@@ -1474,21 +1493,17 @@ exit:
 
 void RoutingManager::DiscoveredPrefixTable::RemoveAllEntries(void)
 {
-    // Remove all entries from the table and unpublish them
-    // from Network Data.
+    // Remove all entries from the table.
 
     for (Router &router : mRouters)
     {
-        if (!router.mEntries.IsEmpty())
-        {
-            SignalTableChanged();
-        }
-
         FreeEntries(router.mEntries);
     }
 
-    RemoveRoutersWithNoEntries();
+    FreeRouters(mRouters);
     mEntryTimer.Stop();
+
+    SignalTableChanged();
 }
 
 void RoutingManager::DiscoveredPrefixTable::RemoveOrDeprecateOldEntries(TimeMilli aTimeThreshold)
@@ -1584,11 +1599,11 @@ TimeMilli RoutingManager::DiscoveredPrefixTable::CalculateNextStaleTime(TimeMill
     return foundOnLink ? Min(onLinkStaleTime, routeStaleTime) : routeStaleTime;
 }
 
-void RoutingManager::DiscoveredPrefixTable::RemoveRoutersWithNoEntries(void)
+void RoutingManager::DiscoveredPrefixTable::RemoveRoutersWithNoEntriesOrFlags(void)
 {
     LinkedList<Router> routersToFree;
 
-    mRouters.RemoveAllMatching(Router::kContainsNoEntries, routersToFree);
+    mRouters.RemoveAllMatching(Router::kContainsNoEntriesOrFlags, routersToFree);
     FreeRouters(routersToFree);
 }
 
@@ -1660,7 +1675,7 @@ void RoutingManager::DiscoveredPrefixTable::RemoveExpiredEntries(void)
         router.mEntries.RemoveAllMatching(Entry::ExpirationChecker(now), expiredEntries);
     }
 
-    RemoveRoutersWithNoEntries();
+    RemoveRoutersWithNoEntriesOrFlags();
 
     if (!expiredEntries.IsEmpty())
     {
@@ -1784,13 +1799,45 @@ exit:
     return;
 }
 
+void RoutingManager::DiscoveredPrefixTable::DetermineAndSetFlags(Ip6::Nd::RouterAdvertMessage &aRaMessage) const
+{
+    // Determine the `M` and `O` flags to include in the RA message
+    // header `aRaMessage` to be emitted.
+    //
+    // If any discovered router on infrastructure which is not itself a
+    // stub router (e.g., another Thread BR) includes the `M` or `O`
+    // flag, we also include the same flag.
+    //
+    // If a router has failed to respond to max number of NS probe
+    // attempts, we consider it as offline and ignore its flags.
+
+    for (const Router &router : mRouters)
+    {
+        if (router.mStubRouterFlag)
+        {
+            continue;
+        }
+
+        if (router.mNsProbeCount > Router::kMaxNsProbes)
+        {
+            continue;
+        }
+
+        if (router.mManagedAddressConfigFlag)
+        {
+            aRaMessage.GetHeader().SetManagedAddressConfigFlag();
+        }
+
+        if (router.mOtherConfigFlag)
+        {
+            aRaMessage.GetHeader().SetOtherConfigFlag();
+        }
+    }
+}
+
 void RoutingManager::DiscoveredPrefixTable::InitIterator(PrefixTableIterator &aIterator) const
 {
-    Iterator &iterator = static_cast<Iterator &>(aIterator);
-
-    iterator.SetInitTime();
-    iterator.SetRouter(mRouters.GetHead());
-    iterator.SetEntry(mRouters.IsEmpty() ? nullptr : mRouters.GetHead()->mEntries.GetHead());
+    static_cast<Iterator &>(aIterator).Init(mRouters);
 }
 
 Error RoutingManager::DiscoveredPrefixTable::GetNextEntry(PrefixTableIterator &aIterator,
@@ -1802,7 +1849,7 @@ Error RoutingManager::DiscoveredPrefixTable::GetNextEntry(PrefixTableIterator &a
     VerifyOrExit(iterator.GetRouter() != nullptr, error = kErrorNotFound);
     OT_ASSERT(iterator.GetEntry() != nullptr);
 
-    aEntry.mRouterAddress       = iterator.GetRouter()->mAddress;
+    iterator.GetRouter()->CopyInfoTo(aEntry.mRouter);
     aEntry.mPrefix              = iterator.GetEntry()->GetPrefix();
     aEntry.mIsOnLink            = iterator.GetEntry()->IsOnLinkPrefix();
     aEntry.mMsecSinceLastUpdate = iterator.GetInitTime() - iterator.GetEntry()->GetLastUpdateTime();
@@ -1811,21 +1858,60 @@ Error RoutingManager::DiscoveredPrefixTable::GetNextEntry(PrefixTableIterator &a
     aEntry.mRoutePreference =
         static_cast<otRoutePreference>(aEntry.mIsOnLink ? 0 : iterator.GetEntry()->GetRoutePreference());
 
-    // Advance the iterator
-    iterator.SetEntry(iterator.GetEntry()->GetNext());
-
-    if (iterator.GetEntry() == nullptr)
-    {
-        iterator.SetRouter(iterator.GetRouter()->GetNext());
-
-        if (iterator.GetRouter() != nullptr)
-        {
-            iterator.SetEntry(iterator.GetRouter()->mEntries.GetHead());
-        }
-    }
+    iterator.Advance(Iterator::kToNextEntry);
 
 exit:
     return error;
+}
+
+Error RoutingManager::DiscoveredPrefixTable::GetNextRouter(PrefixTableIterator &aIterator, RouterEntry &aEntry) const
+{
+    Error     error    = kErrorNone;
+    Iterator &iterator = static_cast<Iterator &>(aIterator);
+
+    VerifyOrExit(iterator.GetRouter() != nullptr, error = kErrorNotFound);
+
+    iterator.GetRouter()->CopyInfoTo(aEntry);
+    iterator.Advance(Iterator::kToNextRouter);
+
+exit:
+    return error;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// DiscoveredPrefixTable::Iterator
+
+void RoutingManager::DiscoveredPrefixTable::Iterator::Init(const LinkedList<Router> &aRouters)
+{
+    SetInitTime();
+    SetRouter(aRouters.GetHead());
+    SetEntry(aRouters.IsEmpty() ? nullptr : aRouters.GetHead()->mEntries.GetHead());
+}
+
+void RoutingManager::DiscoveredPrefixTable::Iterator::Advance(AdvanceMode aMode)
+{
+    switch (aMode)
+    {
+    case kToNextEntry:
+        SetEntry(GetEntry()->GetNext());
+
+        if (GetEntry() != nullptr)
+        {
+            break;
+        }
+
+        OT_FALL_THROUGH;
+
+    case kToNextRouter:
+        SetRouter(GetRouter()->GetNext());
+
+        if (GetRouter() != nullptr)
+        {
+            SetEntry(GetRouter()->mEntries.GetHead());
+        }
+
+        break;
+    }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -1947,6 +2033,38 @@ uint32_t RoutingManager::DiscoveredPrefixTable::Entry::CalculateExpireDelay(uint
     }
 
     return delay;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// DiscoveredPrefixTable::Router
+
+bool RoutingManager::DiscoveredPrefixTable::Router::Matches(EmptyChecker aChecker) const
+{
+    // Checks whether or not a `Router` instance has any useful info. An
+    // entry can be removed if it does not advertise M or O flags and
+    // also does not have any advertised prefix entries (RIO/PIO). If
+    // the router already failed to respond to max NS probe attempts,
+    // we consider it as offline and therefore do not consider its
+    // flags anymore.
+
+    OT_UNUSED_VARIABLE(aChecker);
+
+    bool hasFlags = false;
+
+    if (mNsProbeCount <= kMaxNsProbes)
+    {
+        hasFlags = (mManagedAddressConfigFlag || mOtherConfigFlag);
+    }
+
+    return !hasFlags && mEntries.IsEmpty();
+}
+
+void RoutingManager::DiscoveredPrefixTable::Router::CopyInfoTo(RouterEntry &aEntry) const
+{
+    aEntry.mAddress                  = mAddress;
+    aEntry.mManagedAddressConfigFlag = mManagedAddressConfigFlag;
+    aEntry.mOtherConfigFlag          = mOtherConfigFlag;
+    aEntry.mStubRouterFlag           = mStubRouterFlag;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -3209,11 +3327,7 @@ void RoutingManager::Nat64PrefixManager::HandleDiscoverDone(const Ip6::Prefix &a
     mInfraIfPrefix = aPrefix;
 
     LogInfo("Infraif NAT64 prefix: %s", mInfraIfPrefix.IsValidNat64() ? mInfraIfPrefix.ToString().AsCString() : "none");
-
-    if (Get<RoutingManager>().mIsRunning)
-    {
-        Get<RoutingManager>().ScheduleRoutingPolicyEvaluation(kAfterRandomDelay);
-    }
+    Get<RoutingManager>().ScheduleRoutingPolicyEvaluation(kAfterRandomDelay);
 }
 
 Nat64::State RoutingManager::Nat64PrefixManager::GetState(void) const
@@ -3320,12 +3434,74 @@ exit:
 }
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_DHCP6_PD_ENABLE
+const char *RoutingManager::PdPrefixManager::StateToString(Dhcp6PdState aState)
+{
+    static const char *const kStateStrings[] = {
+        "Disabled", // (0) kDisabled
+        "Stopped",  // (1) kStopped
+        "Running",  // (2) kRunning
+    };
+
+    static_assert(0 == kDhcp6PdStateDisabled, "kDhcp6PdStateDisabled value is incorrect");
+    static_assert(1 == kDhcp6PdStateStopped, "kDhcp6PdStateStopped value is incorrect");
+    static_assert(2 == kDhcp6PdStateRunning, "kDhcp6PdStateRunning value is incorrect");
+
+    return kStateStrings[aState];
+}
+
 RoutingManager::PdPrefixManager::PdPrefixManager(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mEnabled(false)
+    , mIsRunning(false)
     , mTimer(aInstance)
 {
     mPrefix.Clear();
+}
+
+void RoutingManager::PdPrefixManager::StartStop(bool aStart)
+{
+    Dhcp6PdState oldState = GetState();
+
+    VerifyOrExit(aStart != mIsRunning);
+    mIsRunning = aStart;
+    EvaluateStateChange(oldState);
+
+exit:
+    return;
+}
+
+RoutingManager::Dhcp6PdState RoutingManager::PdPrefixManager::GetState(void) const
+{
+    Dhcp6PdState state = kDhcp6PdStateDisabled;
+
+    if (mEnabled)
+    {
+        state = mIsRunning ? kDhcp6PdStateRunning : kDhcp6PdStateStopped;
+    }
+
+    return state;
+}
+
+void RoutingManager::PdPrefixManager::EvaluateStateChange(Dhcp6PdState aOldState)
+{
+    Dhcp6PdState newState = GetState();
+
+    VerifyOrExit(aOldState != newState);
+    LogInfo("PdPrefixManager: %s -> %s", StateToString(aOldState), StateToString(newState));
+
+    // TODO: We may also want to inform the platform that PD is stopped.
+    switch (newState)
+    {
+    case kDhcp6PdStateDisabled:
+    case kDhcp6PdStateStopped:
+        WithdrawPrefix();
+        break;
+    case kDhcp6PdStateRunning:
+        break;
+    }
+
+exit:
+    return;
 }
 
 Error RoutingManager::PdPrefixManager::GetPrefixInfo(PrefixTableEntry &aInfo) const
@@ -3363,7 +3539,7 @@ void RoutingManager::PdPrefixManager::ProcessPlatformGeneratedRa(const uint8_t *
     Error                                     error = kErrorNone;
     Ip6::Nd::RouterAdvertMessage::Icmp6Packet packet;
 
-    VerifyOrExit(mEnabled, LogWarn("Ignore platform generated RA since PD is disabled."));
+    VerifyOrExit(IsRunning(), LogWarn("Ignore platform generated RA since PD is disabled or not running."));
     packet.Init(aRouterAdvert, aLength);
     error = Process(Ip6::Nd::RouterAdvertMessage(packet));
 
@@ -3454,15 +3630,11 @@ exit:
 
 void RoutingManager::PdPrefixManager::SetEnabled(bool aEnabled)
 {
+    Dhcp6PdState oldState = GetState();
+
     VerifyOrExit(mEnabled != aEnabled);
-
     mEnabled = aEnabled;
-    if (!aEnabled)
-    {
-        WithdrawPrefix();
-    }
-
-    LogInfo("PdPrefixManager is %s", aEnabled ? "enabled" : "disabled");
+    EvaluateStateChange(oldState);
 
 exit:
     return;

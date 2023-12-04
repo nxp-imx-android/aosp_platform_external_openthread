@@ -40,12 +40,12 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/encoding.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/random.hpp"
 #include "common/string.hpp"
 #include "crypto/aes_ccm.hpp"
 #include "crypto/sha256.hpp"
+#include "instance/instance.hpp"
 #include "mac/mac_frame.hpp"
 #include "radio/radio.hpp"
 #include "thread/child.hpp"
@@ -414,7 +414,7 @@ void Mac::SetRxOnWhenIdle(bool aRxOnWhenIdle)
 #endif
     }
 
-    mLinks.SetRxOnWhenBackoff(mRxOnWhenIdle || mPromiscuous);
+    mLinks.SetRxOnWhenIdle(mRxOnWhenIdle || mPromiscuous);
     UpdateIdleMode();
 
 exit:
@@ -1659,6 +1659,8 @@ Error Mac::ProcessEnhAckSecurity(TxFrame &aTxFrame, RxFrame &aAckFrame)
     VerifyOrExit(aAckFrame.GetSecurityEnabled(), error = kErrorNone);
     VerifyOrExit(aAckFrame.IsVersion2015());
 
+    SuccessOrExit(aAckFrame.ValidatePsdu());
+
     IgnoreError(aAckFrame.GetSecurityLevel(securityLevel));
     VerifyOrExit(securityLevel == Frame::kSecurityEncMic32);
 
@@ -2101,7 +2103,7 @@ void Mac::SetPromiscuous(bool aPromiscuous)
     mShouldDelaySleep = false;
 #endif
 
-    mLinks.SetRxOnWhenBackoff(mRxOnWhenIdle || mPromiscuous);
+    mLinks.SetRxOnWhenIdle(mRxOnWhenIdle || mPromiscuous);
     UpdateIdleMode();
 }
 
@@ -2225,12 +2227,9 @@ void Mac::LogFrameRxFailure(const RxFrame *aFrame, Error aError) const
 
 void Mac::LogFrameTxFailure(const TxFrame &aFrame, Error aError, uint8_t aRetryCount, bool aWillRetx) const
 {
-#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE && OPENTHREAD_CONFIG_MULTI_RADIO
+#if OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
+#if OPENTHREAD_CONFIG_MULTI_RADIO
     if (aFrame.GetRadioType() == kRadioTypeIeee802154)
-#elif OPENTHREAD_CONFIG_RADIO_LINK_IEEE_802_15_4_ENABLE
-    if (true)
-#else
-    if (false)
 #endif
     {
         uint8_t maxAttempts = aFrame.GetMaxFrameRetries() + 1;
@@ -2239,10 +2238,22 @@ void Mac::LogFrameTxFailure(const TxFrame &aFrame, Error aError, uint8_t aRetryC
         LogInfo("Frame tx attempt %u/%u failed, error:%s, %s", curAttempt, maxAttempts, ErrorToString(aError),
                 aFrame.ToInfoString().AsCString());
     }
-    else
+#else
+    OT_UNUSED_VARIABLE(aRetryCount);
+    OT_UNUSED_VARIABLE(aWillRetx);
+#endif
+
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+#if OPENTHREAD_CONFIG_MULTI_RADIO
+    if (aFrame.GetRadioType() == kRadioTypeTrel)
+#endif
     {
-        LogInfo("Frame tx failed, error:%s, %s", ErrorToString(aError), aFrame.ToInfoString().AsCString());
+        if (Get<Trel::Interface>().IsEnabled())
+        {
+            LogInfo("Frame tx failed, error:%s, %s", ErrorToString(aError), aFrame.ToInfoString().AsCString());
+        }
     }
+#endif
 }
 
 void Mac::LogBeacon(const char *aActionText) const { LogInfo("%s Beacon", aActionText); }
