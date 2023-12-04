@@ -35,7 +35,7 @@
 
 #include "common/as_core_type.hpp"
 #include "common/code_utils.hpp"
-#include "common/instance.hpp"
+#include "instance/instance.hpp"
 #include "radio/radio.hpp"
 
 using namespace ot;
@@ -313,4 +313,10 @@ OT_TOOL_WEAK otError otPlatRadioReceiveAt(otInstance *aInstance, uint8_t aChanne
     OT_UNUSED_VARIABLE(aDuration);
 
     return kErrorNotImplemented;
+}
+
+OT_TOOL_WEAK void otPlatRadioSetRxOnWhenIdle(otInstance *aInstance, bool aEnable)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    OT_UNUSED_VARIABLE(aEnable);
 }

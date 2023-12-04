@@ -47,7 +47,6 @@
 #include "common/array.hpp"
 #include "common/as_core_type.hpp"
 #include "common/error.hpp"
-#include "common/extension.hpp"
 #include "common/log.hpp"
 #include "common/message.hpp"
 #include "common/non_copyable.hpp"
@@ -57,6 +56,7 @@
 #include "common/timer.hpp"
 #include "common/uptime.hpp"
 #include "diags/factory_diags.hpp"
+#include "instance/extension.hpp"
 #include "mac/link_raw.hpp"
 #include "radio/radio.hpp"
 #include "utils/otns.hpp"
@@ -186,6 +186,21 @@ public:
       */
     static Instance *Init(void *aBuffer, size_t *aBufferSize);
 
+#if OPENTHREAD_CONFIG_MULTIPLE_STATIC_INSTANCE_ENABLE
+    /**
+     * This static method initializes the OpenThread instance.
+     *
+     * This method utilizes static buffer to initialize the OpenThread instance.
+     * This function must be called before any other calls on OpenThread instance.
+     *
+     * @param[in] aIdx The index of the OpenThread instance to initialize.
+     *
+     * @returns  A pointer to the new OpenThread instance.
+     *
+     */
+    static Instance *InitMultiple(uint8_t aIdx);
+#endif
+
 #else // OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE
 
     /**
@@ -235,6 +250,18 @@ public:
      *
      */
     void Reset(void);
+
+#if OPENTHREAD_CONFIG_PLATFORM_BOOTLOADER_MODE_ENABLE
+    /**
+     * Triggers a platform reset to bootloader mode, if supported.
+     *
+     * @retval kErrorNone        Reset to bootloader successfully.
+     * @retval kErrorBusy        Failed due to another operation is ongoing.
+     * @retval kErrorNotCapable  Not capable of resetting to bootloader.
+     *
+     */
+    Error ResetToBootloader(void);
+#endif
 
 #if OPENTHREAD_RADIO
     /**
@@ -701,7 +728,9 @@ template <> inline RadioSelector &Instance::Get(void) { return mRadioSelector; }
 
 template <> inline Mle::Mle &Instance::Get(void) { return mMleRouter; }
 
+#if OPENTHREAD_FTD
 template <> inline Mle::MleRouter &Instance::Get(void) { return mMleRouter; }
+#endif
 
 template <> inline Mle::DiscoverScanner &Instance::Get(void) { return mDiscoverScanner; }
 

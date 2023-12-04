@@ -38,9 +38,9 @@
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
 #include "common/encoding.hpp"
-#include "common/instance.hpp"
 #include "common/random.hpp"
 #include "common/string.hpp"
+#include "instance/instance.hpp"
 
 namespace ot {
 namespace Coap {
@@ -139,7 +139,7 @@ uint8_t Message::WriteExtendedOptionField(uint16_t aValue, uint8_t *&aBuffer)
     else
     {
         rval = kOption2ByteExtension;
-        Encoding::BigEndian::WriteUint16(aValue - kOption2ByteExtensionOffset, aBuffer);
+        BigEndian::WriteUint16(aValue - kOption2ByteExtensionOffset, aBuffer);
         aBuffer += sizeof(uint16_t);
     }
 
@@ -183,7 +183,7 @@ Error Message::AppendUintOption(uint16_t aNumber, uint32_t aValue)
     const uint8_t *value  = &buffer[0];
     uint16_t       length = sizeof(uint32_t);
 
-    Encoding::BigEndian::WriteUint32(aValue, buffer);
+    BigEndian::WriteUint32(aValue, buffer);
 
     while ((length > 0) && (value[0] == 0))
     {
@@ -551,7 +551,7 @@ Error Option::Iterator::ReadOptionValue(uint64_t &aUintValue) const
 
     for (uint16_t pos = 0; pos < mOption.mLength; pos++)
     {
-        aUintValue <<= CHAR_BIT;
+        aUintValue <<= kBitsPerByte;
         aUintValue |= buffer[pos];
     }
 
@@ -592,7 +592,7 @@ Error Option::Iterator::ReadExtendedOptionField(uint16_t &aValue)
         uint16_t value16;
 
         SuccessOrExit(error = Read(sizeof(uint16_t), &value16));
-        value16 = Encoding::BigEndian::HostSwap16(value16);
+        value16 = BigEndian::HostSwap16(value16);
         aValue  = value16 + Message::kOption2ByteExtensionOffset;
     }
     else
