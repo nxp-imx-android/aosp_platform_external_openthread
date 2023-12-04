@@ -39,7 +39,7 @@
 #include <openthread/platform/border_routing.h>
 
 #include "border_router/routing_manager.hpp"
-#include "common/instance.hpp"
+#include "instance/instance.hpp"
 
 using namespace ot;
 
@@ -170,6 +170,16 @@ otError otBorderRoutingGetNextPrefixTableEntry(otInstance                       
     AssertPointerIsNotNull(aEntry);
 
     return AsCoreType(aInstance).Get<BorderRouter::RoutingManager>().GetNextPrefixTableEntry(*aIterator, *aEntry);
+}
+
+otError otBorderRoutingGetNextRouterEntry(otInstance                         *aInstance,
+                                          otBorderRoutingPrefixTableIterator *aIterator,
+                                          otBorderRoutingRouterEntry         *aEntry)
+{
+    AssertPointerIsNotNull(aIterator);
+    AssertPointerIsNotNull(aEntry);
+
+    return AsCoreType(aInstance).Get<BorderRouter::RoutingManager>().GetNextRouterEntry(*aIterator, *aEntry);
 }
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_DHCP6_PD_ENABLE

@@ -67,9 +67,6 @@
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
 #include <openthread/backbone_router_ftd.h>
 #endif
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
-#include <openthread/link_metrics.h>
-#endif
 #endif
 #if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && OPENTHREAD_FTD
 #include <openthread/channel_manager.h>
@@ -90,6 +87,7 @@
 #include <openthread/radio_stats.h>
 #endif
 #include "common/new.hpp"
+#include "common/numeric_limits.hpp"
 #include "common/string.hpp"
 #include "mac/channel_mask.hpp"
 
@@ -147,11 +145,11 @@ Interpreter::Interpreter(Instance *aInstance, otCliOutputCallback aCallback, voi
 #if OPENTHREAD_CONFIG_HISTORY_TRACKER_ENABLE
     , mHistory(aInstance, *this)
 #endif
+#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
+    , mLinkMetrics(aInstance, *this)
+#endif
 #if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE
     , mLocateInProgress(false)
-#endif
-#if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
-    , mLinkMetricsQueryInProgress(false)
 #endif
 #endif // OPENTHREAD_FTD || OPENTHREAD_MTD
 {
@@ -276,11 +274,34 @@ template <> otError Interpreter::Process<Cmd("version")>(Arg aArgs[])
 
 template <> otError Interpreter::Process<Cmd("reset")>(Arg aArgs[])
 {
-    OT_UNUSED_VARIABLE(aArgs);
+    otError error = OT_ERROR_NONE;
 
-    otInstanceReset(GetInstancePtr());
+    if (aArgs[0].IsEmpty())
+    {
+        otInstanceReset(GetInstancePtr());
+    }
 
-    return OT_ERROR_NONE;
+#if OPENTHREAD_CONFIG_PLATFORM_BOOTLOADER_MODE_ENABLE
+    /**
+     * @cli reset bootloader
+     * @code
+     * reset bootloader
+     * @endcode
+     * @cparam reset bootloader
+     * @par api_copy
+     * #otInstanceResetToBootloader
+     */
+    else if (aArgs[0] == "bootloader")
+    {
+        error = otInstanceResetToBootloader(GetInstancePtr());
+    }
+#endif
+    else
+    {
+        error = OT_ERROR_INVALID_COMMAND;
+    }
+
+    return error;
 }
 
 void Interpreter::ProcessLine(char *aBuf)
@@ -1268,7 +1289,7 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
             if (otChannelMonitorIsEnabled(GetInstancePtr()))
             {
                 uint32_t channelMask = otLinkGetSupportedChannelMask(GetInstancePtr());
-                uint8_t  channelNum  = sizeof(channelMask) * CHAR_BIT;
+                uint8_t  channelNum  = BitSizeOf(channelMask);
 
                 OutputLine("interval: %lu", ToUlong(otChannelMonitorGetSampleInterval(GetInstancePtr())));
                 OutputLine("threshold: %d", otChannelMonitorGetRssiThreshold(GetInstancePtr()));
@@ -2588,7 +2609,7 @@ template <> otError Interpreter::Process<Cmd("discover")>(Arg aArgs[])
         uint8_t channel;
 
         SuccessOrExit(error = aArgs[0].ParseAsUint8(channel));
-        VerifyOrExit(channel < sizeof(scanChannels) * CHAR_BIT, error = OT_ERROR_INVALID_ARGS);
+        VerifyOrExit(channel < BitSizeOf(scanChannels), error = OT_ERROR_INVALID_ARGS);
         scanChannels = 1 << channel;
     }
 
@@ -3125,13 +3146,18 @@ template <> otError Interpreter::Process<Cmd("ipaddr")>(Arg aArgs[])
      * @endcode
      * @code
      * ipaddr -v
-     * fdde:ad00:beef:0:0:ff:fe00:0 origin:thread
-     * fdde:ad00:beef:0:558:f56b:d688:799 origin:thread
-     * fe80:0:0:0:f3d9:2a82:c8d8:fe43 origin:thread
+     * fd5e:18fa:f4a5:b8:0:ff:fe00:fc00 origin:thread plen:64 preferred:0 valid:1
+     * fd5e:18fa:f4a5:b8:0:ff:fe00:dc00 origin:thread plen:64 preferred:0 valid:1
+     * fd5e:18fa:f4a5:b8:f8e:5d95:87a0:e82c origin:thread plen:64 preferred:0 valid:1
+     * fe80:0:0:0:4891:b191:e277:8826 origin:thread plen:64 preferred:1 valid:1
      * Done
      * @endcode
      * @cparam ipaddr [@ca{-v}]
-     * Use `-v` to get verbose IP Address information.
+     * Use `-v` to get more verbose information about the address:
+     * - `origin`: can be `thread`, `slaac`, `dhcp6`, `manual` and indicates the origin of the address
+     * - `plen`: prefix length
+     * - `preferred`: preferred flag (boolean)
+     * - `valid`: valid flag (boolean)
      * @par api_copy
      * #otIp6GetUnicastAddresses
      */
@@ -3145,7 +3171,8 @@ template <> otError Interpreter::Process<Cmd("ipaddr")>(Arg aArgs[])
 
             if (verbose)
             {
-                OutputFormat(" origin:%s", AddressOriginToString(addr->mAddressOrigin));
+                OutputFormat(" origin:%s plen:%u preferred:%u valid:%u", AddressOriginToString(addr->mAddressOrigin),
+                             addr->mPrefixLength, addr->mPreferred, addr->mValid);
             }
 
             OutputNewLine();
@@ -3643,241 +3670,8 @@ exit:
 #endif // OPENTHREAD_FTD
 
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
-void Interpreter::HandleLinkMetricsReport(const otIp6Address        *aAddress,
-                                          const otLinkMetricsValues *aMetricsValues,
-                                          otLinkMetricsStatus        aStatus,
-                                          void                      *aContext)
-{
-    static_cast<Interpreter *>(aContext)->HandleLinkMetricsReport(aAddress, aMetricsValues, aStatus);
-}
 
-void Interpreter::PrintLinkMetricsValue(const otLinkMetricsValues *aMetricsValues)
-{
-    static const char kLinkMetricsTypeAverage[] = "(Exponential Moving Average)";
-
-    if (aMetricsValues->mMetrics.mPduCount)
-    {
-        OutputLine(" - PDU Counter: %lu (Count/Summation)", ToUlong(aMetricsValues->mPduCountValue));
-    }
-
-    if (aMetricsValues->mMetrics.mLqi)
-    {
-        OutputLine(" - LQI: %u %s", aMetricsValues->mLqiValue, kLinkMetricsTypeAverage);
-    }
-
-    if (aMetricsValues->mMetrics.mLinkMargin)
-    {
-        OutputLine(" - Margin: %u (dB) %s", aMetricsValues->mLinkMarginValue, kLinkMetricsTypeAverage);
-    }
-
-    if (aMetricsValues->mMetrics.mRssi)
-    {
-        OutputLine(" - RSSI: %d (dBm) %s", aMetricsValues->mRssiValue, kLinkMetricsTypeAverage);
-    }
-}
-
-void Interpreter::HandleLinkMetricsReport(const otIp6Address        *aAddress,
-                                          const otLinkMetricsValues *aMetricsValues,
-                                          otLinkMetricsStatus        aStatus)
-{
-    OutputFormat("Received Link Metrics Report from: ");
-    OutputIp6AddressLine(*aAddress);
-
-    if (aMetricsValues != nullptr)
-    {
-        PrintLinkMetricsValue(aMetricsValues);
-    }
-    else
-    {
-        OutputLine("Link Metrics Report, status: %s", LinkMetricsStatusToStr(aStatus));
-    }
-
-    if (mLinkMetricsQueryInProgress)
-    {
-        mLinkMetricsQueryInProgress = false;
-        OutputResult(OT_ERROR_NONE);
-    }
-}
-
-void Interpreter::HandleLinkMetricsMgmtResponse(const otIp6Address *aAddress,
-                                                otLinkMetricsStatus aStatus,
-                                                void               *aContext)
-{
-    static_cast<Interpreter *>(aContext)->HandleLinkMetricsMgmtResponse(aAddress, aStatus);
-}
-
-void Interpreter::HandleLinkMetricsMgmtResponse(const otIp6Address *aAddress, otLinkMetricsStatus aStatus)
-{
-    OutputFormat("Received Link Metrics Management Response from: ");
-    OutputIp6AddressLine(*aAddress);
-
-    OutputLine("Status: %s", LinkMetricsStatusToStr(aStatus));
-}
-
-void Interpreter::HandleLinkMetricsEnhAckProbingIe(otShortAddress             aShortAddress,
-                                                   const otExtAddress        *aExtAddress,
-                                                   const otLinkMetricsValues *aMetricsValues,
-                                                   void                      *aContext)
-{
-    static_cast<Interpreter *>(aContext)->HandleLinkMetricsEnhAckProbingIe(aShortAddress, aExtAddress, aMetricsValues);
-}
-
-void Interpreter::HandleLinkMetricsEnhAckProbingIe(otShortAddress             aShortAddress,
-                                                   const otExtAddress        *aExtAddress,
-                                                   const otLinkMetricsValues *aMetricsValues)
-{
-    OutputFormat("Received Link Metrics data in Enh Ack from neighbor, short address:0x%02x , extended address:",
-                 aShortAddress);
-    OutputExtAddressLine(*aExtAddress);
-
-    if (aMetricsValues != nullptr)
-    {
-        PrintLinkMetricsValue(aMetricsValues);
-    }
-}
-
-const char *Interpreter::LinkMetricsStatusToStr(otLinkMetricsStatus aStatus)
-{
-    static const char *const kStatusStrings[] = {
-        "Success",                      // (0) OT_LINK_METRICS_STATUS_SUCCESS
-        "Cannot support new series",    // (1) OT_LINK_METRICS_STATUS_CANNOT_SUPPORT_NEW_SERIES
-        "Series ID already registered", // (2) OT_LINK_METRICS_STATUS_SERIESID_ALREADY_REGISTERED
-        "Series ID not recognized",     // (3) OT_LINK_METRICS_STATUS_SERIESID_NOT_RECOGNIZED
-        "No matching series ID",        // (4) OT_LINK_METRICS_STATUS_NO_MATCHING_FRAMES_RECEIVED
-    };
-
-    const char *str = "Unknown error";
-
-    static_assert(0 == OT_LINK_METRICS_STATUS_SUCCESS, "STATUS_SUCCESS is incorrect");
-    static_assert(1 == OT_LINK_METRICS_STATUS_CANNOT_SUPPORT_NEW_SERIES, "CANNOT_SUPPORT_NEW_SERIES is incorrect");
-    static_assert(2 == OT_LINK_METRICS_STATUS_SERIESID_ALREADY_REGISTERED, "SERIESID_ALREADY_REGISTERED is incorrect");
-    static_assert(3 == OT_LINK_METRICS_STATUS_SERIESID_NOT_RECOGNIZED, "SERIESID_NOT_RECOGNIZED is incorrect");
-    static_assert(4 == OT_LINK_METRICS_STATUS_NO_MATCHING_FRAMES_RECEIVED, "NO_MATCHING_FRAMES_RECEIVED is incorrect");
-
-    if (aStatus < OT_ARRAY_LENGTH(kStatusStrings))
-    {
-        str = kStatusStrings[aStatus];
-    }
-    else if (aStatus == OT_LINK_METRICS_STATUS_OTHER_ERROR)
-    {
-        str = "Other error";
-    }
-
-    return str;
-}
-
-template <> otError Interpreter::Process<Cmd("linkmetrics")>(Arg aArgs[])
-{
-    otError error = OT_ERROR_INVALID_COMMAND;
-
-    if (aArgs[0] == "query")
-    {
-        otIp6Address  address;
-        bool          isSingle;
-        bool          blocking;
-        uint8_t       seriesId;
-        otLinkMetrics linkMetrics;
-
-        SuccessOrExit(error = aArgs[1].ParseAsIp6Address(address));
-
-        /**
-         * @cli linkmetrics query single
-         * @code
-         * linkmetrics query fe80:0:0:0:3092:f334:1455:1ad2 single qmr
-         * Done
-         * > Received Link Metrics Report from: fe80:0:0:0:3092:f334:1455:1ad2
-         * - LQI: 76 (Exponential Moving Average)
-         * - Margin: 82 (dB) (Exponential Moving Average)
-         * - RSSI: -18 (dBm) (Exponential Moving Average)
-         * @endcode
-         * @cparam linkmetrics query @ca{peer-ipaddr} single [@ca{pqmr}]
-         * - `peer-ipaddr`: Peer address.
-         * - [`p`, `q`, `m`, and `r`] map to #otLinkMetrics.
-         *   - `p`: Layer 2 Number of PDUs received.
-         *   - `q`: Layer 2 LQI.
-         *   - `m`: Link Margin.
-         *   - `r`: RSSI.
-         * @par
-         * Perform a Link Metrics query (Single Probe).
-         * @sa otLinkMetricsQuery
-         */
-        if (aArgs[2] == "single")
-        {
-            isSingle = true;
-            SuccessOrExit(error = ParseLinkMetricsFlags(linkMetrics, aArgs[3]));
-        }
-        /**
-         * @cli linkmetrics query forward
-         * @code
-         * linkmetrics query fe80:0:0:0:3092:f334:1455:1ad2 forward 1
-         * Done
-         * > Received Link Metrics Report from: fe80:0:0:0:3092:f334:1455:1ad2
-         * - PDU Counter: 2 (Count/Summation)
-         * - LQI: 76 (Exponential Moving Average)
-         * - Margin: 82 (dB) (Exponential Moving Average)
-         * - RSSI: -18 (dBm) (Exponential Moving Average)
-         * @endcode
-         * @cparam linkmetrics query @ca{peer-ipaddr} forward @ca{series-id}
-         * - `peer-ipaddr`: Peer address.
-         * - `series-id`: The Series ID.
-         * @par
-         * Perform a Link Metrics query (Forward Tracking Series).
-         * @sa otLinkMetricsQuery
-         */
-        else if (aArgs[2] == "forward")
-        {
-            isSingle = false;
-            SuccessOrExit(error = aArgs[3].ParseAsUint8(seriesId));
-        }
-        else
-        {
-            ExitNow(error = OT_ERROR_INVALID_ARGS);
-        }
-
-        blocking = (aArgs[4] == "block");
-
-        SuccessOrExit(error = otLinkMetricsQuery(GetInstancePtr(), &address, isSingle ? 0 : seriesId,
-                                                 isSingle ? &linkMetrics : nullptr, HandleLinkMetricsReport, this));
-
-        if (blocking)
-        {
-            mLinkMetricsQueryInProgress = true;
-            error                       = OT_ERROR_PENDING;
-        }
-    }
-    else if (aArgs[0] == "mgmt")
-    {
-        error = ProcessLinkMetricsMgmt(aArgs + 1);
-    }
-    /**
-     * @cli linkmetrics probe
-     * @code
-     * linkmetrics probe fe80:0:0:0:3092:f334:1455:1ad2 1 10
-     * Done
-     * @endcode
-     * @cparam linkmetrics probe @ca{peer-ipaddr} @ca{series-id} @ca{length}
-     * - `peer-ipaddr`: Peer address.
-     * - `series-id`: The Series ID for which this Probe message targets.
-     * - `length`: The length of the Probe message. A valid range is [0, 64].
-     * @par api_copy
-     * #otLinkMetricsSendLinkProbe
-     */
-    else if (aArgs[0] == "probe")
-    {
-        otIp6Address address;
-        uint8_t      seriesId;
-        uint8_t      length;
-
-        SuccessOrExit(error = aArgs[1].ParseAsIp6Address(address));
-        SuccessOrExit(error = aArgs[2].ParseAsUint8(seriesId));
-        SuccessOrExit(error = aArgs[3].ParseAsUint8(length));
-
-        error = otLinkMetricsSendLinkProbe(GetInstancePtr(), &address, seriesId, length);
-    }
-
-exit:
-    return error;
-}
+template <> otError Interpreter::Process<Cmd("linkmetrics")>(Arg aArgs[]) { return mLinkMetrics.Process(aArgs); }
 
 #if OPENTHREAD_CONFIG_LINK_METRICS_MANAGER_ENABLE
 template <> otError Interpreter::Process<Cmd("linkmetricsmgr")>(Arg aArgs[])
@@ -3944,213 +3738,6 @@ exit:
     return error;
 }
 #endif // OPENTHREAD_CONFIG_LINK_METRICS_MANAGER_ENABLE
-
-otError Interpreter::ParseLinkMetricsFlags(otLinkMetrics &aLinkMetrics, const Arg &aFlags)
-{
-    otError error = OT_ERROR_NONE;
-
-    VerifyOrExit(!aFlags.IsEmpty(), error = OT_ERROR_INVALID_ARGS);
-
-    memset(&aLinkMetrics, 0, sizeof(aLinkMetrics));
-
-    for (const char *arg = aFlags.GetCString(); *arg != '\0'; arg++)
-    {
-        switch (*arg)
-        {
-        case 'p':
-            aLinkMetrics.mPduCount = true;
-            break;
-
-        case 'q':
-            aLinkMetrics.mLqi = true;
-            break;
-
-        case 'm':
-            aLinkMetrics.mLinkMargin = true;
-            break;
-
-        case 'r':
-            aLinkMetrics.mRssi = true;
-            break;
-
-        default:
-            ExitNow(error = OT_ERROR_INVALID_ARGS);
-        }
-    }
-
-exit:
-    return error;
-}
-
-otError Interpreter::ProcessLinkMetricsMgmt(Arg aArgs[])
-{
-    otError                  error;
-    otIp6Address             address;
-    otLinkMetricsSeriesFlags seriesFlags;
-    bool                     clear = false;
-
-    SuccessOrExit(error = aArgs[0].ParseAsIp6Address(address));
-
-    memset(&seriesFlags, 0, sizeof(otLinkMetricsSeriesFlags));
-
-    /**
-     * @cli linkmetrics mgmt forward
-     * @code
-     * linkmetrics mgmt fe80:0:0:0:3092:f334:1455:1ad2 forward 1 dra pqmr
-     * Done
-     * > Received Link Metrics Management Response from: fe80:0:0:0:3092:f334:1455:1ad2
-     * Status: SUCCESS
-     * @endcode
-     * @cparam linkmetrics mgmt @ca{peer-ipaddr} forward @ca{series-id} [@ca{ldraX}][@ca{pqmr}]
-     * - `peer-ipaddr`: Peer address.
-     * - `series-id`: The Series ID.
-     * - [`l`, `d`, `r`, and `a`] map to #otLinkMetricsSeriesFlags. `X` represents none of the
-     *   `otLinkMetricsSeriesFlags`, and stops the accounting and removes the series.
-     *   - `l`: MLE Link Probe.
-     *   - `d`: MAC Data.
-     *   - `r`: MAC Data Request.
-     *   - `a`: MAC Ack.
-     *   - `X`: Can only be used without any other flags.
-     * - [`p`, `q`, `m`, and `r`] map to #otLinkMetricsValues.
-     *   - `p`: Layer 2 Number of PDUs received.
-     *   - `q`: Layer 2 LQI.
-     *   - `m`: Link Margin.
-     *   - `r`: RSSI.
-     * @par api_copy
-     * #otLinkMetricsConfigForwardTrackingSeries
-     */
-    if (aArgs[1] == "forward")
-    {
-        uint8_t       seriesId;
-        otLinkMetrics linkMetrics;
-
-        memset(&linkMetrics, 0, sizeof(otLinkMetrics));
-        SuccessOrExit(error = aArgs[2].ParseAsUint8(seriesId));
-        VerifyOrExit(!aArgs[3].IsEmpty(), error = OT_ERROR_INVALID_ARGS);
-
-        for (const char *arg = aArgs[3].GetCString(); *arg != '\0'; arg++)
-        {
-            switch (*arg)
-            {
-            case 'l':
-                seriesFlags.mLinkProbe = true;
-                break;
-
-            case 'd':
-                seriesFlags.mMacData = true;
-                break;
-
-            case 'r':
-                seriesFlags.mMacDataRequest = true;
-                break;
-
-            case 'a':
-                seriesFlags.mMacAck = true;
-                break;
-
-            case 'X':
-                VerifyOrExit(arg == aArgs[3].GetCString() && *(arg + 1) == '\0' && aArgs[4].IsEmpty(),
-                             error = OT_ERROR_INVALID_ARGS); // Ensure the flags only contain 'X'
-                clear = true;
-                break;
-
-            default:
-                ExitNow(error = OT_ERROR_INVALID_ARGS);
-            }
-        }
-
-        if (!clear)
-        {
-            SuccessOrExit(error = ParseLinkMetricsFlags(linkMetrics, aArgs[4]));
-            VerifyOrExit(aArgs[5].IsEmpty(), error = OT_ERROR_INVALID_ARGS);
-        }
-
-        error = otLinkMetricsConfigForwardTrackingSeries(GetInstancePtr(), &address, seriesId, seriesFlags,
-                                                         clear ? nullptr : &linkMetrics,
-                                                         &Interpreter::HandleLinkMetricsMgmtResponse, this);
-    }
-    else if (aArgs[1] == "enhanced-ack")
-    {
-        otLinkMetricsEnhAckFlags enhAckFlags;
-        otLinkMetrics            linkMetrics;
-        otLinkMetrics           *pLinkMetrics = &linkMetrics;
-
-        /**
-         * @cli linkmetrics mgmt enhanced-ack clear
-         * @code
-         * linkmetrics mgmt fe80:0:0:0:3092:f334:1455:1ad2 enhanced-ack clear
-         * Done
-         * > Received Link Metrics Management Response from: fe80:0:0:0:3092:f334:1455:1ad2
-         * Status: Success
-         * @endcode
-         * @cparam linkmetrics mgmt @ca{peer-ipaddr} enhanced-ack clear
-         * `peer-ipaddr` should be the Link Local address of the neighboring device.
-         * @par
-         * Sends a Link Metrics Management Request to clear an Enhanced-ACK Based Probing.
-         * @sa otLinkMetricsConfigEnhAckProbing
-         */
-        if (aArgs[2] == "clear")
-        {
-            enhAckFlags  = OT_LINK_METRICS_ENH_ACK_CLEAR;
-            pLinkMetrics = nullptr;
-        }
-        /**
-         * @cli linkmetrics mgmt enhanced-ack register
-         * @code
-         * linkmetrics mgmt fe80:0:0:0:3092:f334:1455:1ad2 enhanced-ack register qm
-         * Done
-         * > Received Link Metrics Management Response from: fe80:0:0:0:3092:f334:1455:1ad2
-         * Status: Success
-         * @endcode
-         * @code
-         * > linkmetrics mgmt fe80:0:0:0:3092:f334:1455:1ad2 enhanced-ack register qm r
-         * Done
-         * > Received Link Metrics Management Response from: fe80:0:0:0:3092:f334:1455:1ad2
-         * Status: Cannot support new series
-         * @endcode
-         * @cparam linkmetrics mgmt @ca{peer-ipaddr} enhanced-ack register [@ca{qmr}][@ca{r}]
-         * [`q`, `m`, and `r`] map to #otLinkMetricsValues. Per spec 4.11.3.4.4.6, you can
-         * only use a maximum of two options at once, for example `q`, or `qm`.
-         * - `q`: Layer 2 LQI.
-         * - `m`: Link Margin.
-         * - `r`: RSSI.
-         * .
-         * The additional `r` is optional and only used for reference devices. When this option
-         * is specified, Type/Average Enum of each Type Id Flags is set to reserved. This is
-         * used to verify that the Probing Subject correctly handles invalid Type Id Flags, and
-         * only available when `OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE` is enabled.
-         * @par
-         * Sends a Link Metrics Management Request to register an Enhanced-ACK Based Probing.
-         * @sa otLinkMetricsConfigEnhAckProbing
-         */
-        else if (aArgs[2] == "register")
-        {
-            enhAckFlags = OT_LINK_METRICS_ENH_ACK_REGISTER;
-            SuccessOrExit(error = ParseLinkMetricsFlags(linkMetrics, aArgs[3]));
-#if OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
-            if (aArgs[4] == "r")
-            {
-                linkMetrics.mReserved = true;
-            }
-#endif
-        }
-        else
-        {
-            ExitNow(error = OT_ERROR_INVALID_ARGS);
-        }
-
-        error = otLinkMetricsConfigEnhAckProbing(GetInstancePtr(), &address, enhAckFlags, pLinkMetrics,
-                                                 &Interpreter::HandleLinkMetricsMgmtResponse, this,
-                                                 &Interpreter::HandleLinkMetricsEnhAckProbingIe, this);
-    }
-    else
-    {
-        error = OT_ERROR_INVALID_ARGS;
-    }
-
-exit:
-    return error;
-}
 
 #endif // OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
 
@@ -6013,13 +5600,16 @@ void Interpreter::HandlePingStatistics(const otPingSenderStatistics *aStatistics
  * 1 packets transmitted, 1 packets received. Packet loss = 0.0%. Round-trip min/avg/max = 0/0.0/0 ms.
  * Done
  * @endcode
- * @cparam ping [@ca{async}] [@ca{-I source}] @ca{ipaddrc} [@ca{size}] [@ca{count}] <!--
+ * @cparam ping [@ca{async}] [@ca{-I source}] [@ca{-m}] @ca{ipaddrc} [@ca{size}] [@ca{count}] <!--
  * -->          [@ca{interval}] [@ca{hoplimit}] [@ca{timeout}]
  * @par
  * Send an ICMPv6 Echo Request.
  * @par
  * The address can be an IPv4 address, which will be synthesized to an IPv6 address using the preferred NAT64 prefix
  * from the network data.
+ * @par
+ * The optional `-m` flag sets the multicast loop flag, which allows looping back pings to multicast addresses that the
+ * device itself is subscribed to.
  * @par
  * Note: The command will return InvalidState when the preferred NAT64 prefix is unavailable.
  * @sa otPingSenderPing
@@ -6059,24 +5649,15 @@ template <> otError Interpreter::Process<Cmd("ping")>(Arg aArgs[])
         SuccessOrExit(error = aArgs[1].ParseAsIp6Address(config.mSource));
 
 #if !OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE
-        {
-            bool                  valid        = false;
-            const otNetifAddress *unicastAddrs = otIp6GetUnicastAddresses(GetInstancePtr());
-
-            for (const otNetifAddress *addr = unicastAddrs; addr; addr = addr->mNext)
-            {
-                if (otIp6IsAddressEqual(&addr->mAddress, &config.mSource))
-                {
-                    valid = true;
-                    break;
-                }
-            }
-
-            VerifyOrExit(valid, error = OT_ERROR_INVALID_ARGS);
-        }
+        VerifyOrExit(otIp6HasUnicastAddress(GetInstancePtr(), &config.mSource), error = OT_ERROR_INVALID_ARGS);
 #endif
-
         aArgs += 2;
+    }
+
+    if (aArgs[0] == "-m")
+    {
+        config.mMulticastLoop = true;
+        aArgs++;
     }
 
     SuccessOrExit(error = ParseToIp6Address(GetInstancePtr(), aArgs[0], config.mDestination, nat64SynthesizedAddress));
@@ -6239,70 +5820,19 @@ void Interpreter::HandleLinkPcapReceive(const otRadioFrame *aFrame, bool aIsTx, 
 
 void Interpreter::HandleLinkPcapReceive(const otRadioFrame *aFrame, bool aIsTx)
 {
-    OT_UNUSED_VARIABLE(aIsTx);
+    otLogHexDumpInfo info;
+
+    info.mDataBytes  = aFrame->mPsdu;
+    info.mDataLength = aFrame->mLength;
+    info.mTitle      = (aIsTx) ? "TX" : "RX";
+    info.mIterator   = 0;
 
     OutputNewLine();
 
-    for (size_t i = 0; i < 44; i++)
+    while (otLogGenerateNextHexDumpLine(&info) == OT_ERROR_NONE)
     {
-        OutputFormat("=");
+        OutputLine("%s", info.mLine);
     }
-
-    OutputFormat("[len = %3u]", aFrame->mLength);
-
-    for (size_t i = 0; i < 28; i++)
-    {
-        OutputFormat("=");
-    }
-
-    OutputNewLine();
-
-    for (size_t i = 0; i < aFrame->mLength; i += 16)
-    {
-        OutputFormat("|");
-
-        for (size_t j = 0; j < 16; j++)
-        {
-            if (i + j < aFrame->mLength)
-            {
-                OutputFormat(" %02X", aFrame->mPsdu[i + j]);
-            }
-            else
-            {
-                OutputFormat(" ..");
-            }
-        }
-
-        OutputFormat("|");
-
-        for (size_t j = 0; j < 16; j++)
-        {
-            if (i + j < aFrame->mLength)
-            {
-                if (31 < aFrame->mPsdu[i + j] && aFrame->mPsdu[i + j] < 127)
-                {
-                    OutputFormat(" %c", aFrame->mPsdu[i + j]);
-                }
-                else
-                {
-                    OutputFormat(" ?");
-                }
-            }
-            else
-            {
-                OutputFormat(" .");
-            }
-        }
-
-        OutputLine("|");
-    }
-
-    for (size_t i = 0; i < 83; i++)
-    {
-        OutputFormat("-");
-    }
-
-    OutputNewLine();
 }
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
@@ -7141,7 +6671,7 @@ template <> otError Interpreter::Process<Cmd("scan")>(Arg aArgs[])
         uint8_t channel;
 
         SuccessOrExit(error = aArgs->ParseAsUint8(channel));
-        VerifyOrExit(channel < sizeof(scanChannels) * CHAR_BIT, error = OT_ERROR_INVALID_ARGS);
+        VerifyOrExit(channel < BitSizeOf(scanChannels), error = OT_ERROR_INVALID_ARGS);
         scanChannels = 1 << channel;
     }
 

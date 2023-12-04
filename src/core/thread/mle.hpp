@@ -96,7 +96,9 @@ namespace Mle {
  *
  */
 
+#if OPENTHREAD_FTD
 class MleRouter;
+#endif
 
 /**
  * Implements MLE functionality required by the Thread EndDevices, Router, and Leader roles.
@@ -104,7 +106,9 @@ class MleRouter;
  */
 class Mle : public InstanceLocator, private NonCopyable
 {
+#if OPENTHREAD_FTD
     friend class MleRouter;
+#endif
     friend class DiscoverScanner;
     friend class ot::Instance;
     friend class ot::Notifier;
@@ -352,7 +356,7 @@ public:
      * @returns A reference to the Mesh Local Prefix.
      *
      */
-    const Ip6::NetworkPrefix &GetMeshLocalPrefix(void) const { return mMeshLocal16.GetAddress().GetPrefix(); }
+    const Ip6::NetworkPrefix &GetMeshLocalPrefix(void) const { return mMeshLocalPrefix; }
 
     /**
      * Sets the Mesh Local Prefix.
@@ -376,12 +380,6 @@ public:
      */
     Error SetMeshLocalIid(const Ip6::InterfaceIdentifier &aMlIid);
 #endif
-
-    /**
-     * Applies the Mesh Local Prefix.
-     *
-     */
-    void ApplyMeshLocalPrefix(void);
 
     /**
      * Returns a reference to the Thread link-local address.
@@ -690,6 +688,31 @@ public:
      */
     bool HasRestored(void) const { return mHasRestored; }
 
+    /**
+     * Indicates whether or not a given netif multicast address instance is a prefix-based address added by MLE and
+     * uses the mesh local prefix.
+     *
+     * @param[in] aAddress   A `Netif::MulticastAddress` address instance.
+     *
+     * @retval TRUE   If @p aAddress is a prefix-based address which uses the mesh local prefix.
+     * @retval FALSE  If @p aAddress is not a prefix-based address which uses the mesh local prefix.
+     *
+     */
+    bool IsMulticastAddressMeshLocalPrefixBased(const Ip6::Netif::MulticastAddress &aAddress) const
+    {
+        return (&aAddress == &mLinkLocalAllThreadNodes) || (&aAddress == &mRealmLocalAllThreadNodes);
+    }
+
+    /**
+     * Determines the next hop towards an RLOC16 destination.
+     *
+     * @param[in]  aDestination  The RLOC16 of the destination.
+     *
+     * @returns A RLOC16 of the next hop if a route is known, kInvalidRloc16 otherwise.
+     *
+     */
+    uint16_t GetNextHop(uint16_t aDestination) const;
+
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
     /**
      * Gets the CSL timeout.
@@ -918,8 +941,8 @@ private:
         kTypeChildIdRequest,
         kTypeChildIdRequestShort,
         kTypeChildIdResponse,
-        kTypeChildUpdateRequestOfParent,
-        kTypeChildUpdateResponseOfParent,
+        kTypeChildUpdateRequestAsChild,
+        kTypeChildUpdateResponseAsChild,
         kTypeDataRequest,
         kTypeDataResponse,
         kTypeDiscoveryRequest,
@@ -1008,6 +1031,7 @@ private:
         Error AppendActiveDatasetTlv(void);
         Error AppendPendingDatasetTlv(void);
         Error AppendConnectivityTlv(void);
+        Error AppendSteeringDataTlv(void);
         Error AppendAddressRegistrationTlv(Child &aChild);
 #endif
         template <uint8_t kArrayLength> Error AppendTlvRequestTlv(const uint8_t (&aTlvArray)[kArrayLength])
@@ -1096,13 +1120,13 @@ private:
         void InitSecurityControl(void) { mSecurityControl = kKeyIdMode2Mic32; }
         bool IsSecurityControlValid(void) const { return (mSecurityControl == kKeyIdMode2Mic32); }
 
-        uint32_t GetFrameCounter(void) const { return Encoding::LittleEndian::HostSwap32(mFrameCounter); }
-        void     SetFrameCounter(uint32_t aCounter) { mFrameCounter = Encoding::LittleEndian::HostSwap32(aCounter); }
+        uint32_t GetFrameCounter(void) const { return LittleEndian::HostSwap32(mFrameCounter); }
+        void     SetFrameCounter(uint32_t aCounter) { mFrameCounter = LittleEndian::HostSwap32(aCounter); }
 
-        uint32_t GetKeyId(void) const { return Encoding::BigEndian::HostSwap32(mKeySource); }
+        uint32_t GetKeyId(void) const { return BigEndian::HostSwap32(mKeySource); }
         void     SetKeyId(uint32_t aKeySequence)
         {
-            mKeySource = Encoding::BigEndian::HostSwap32(aKeySequence);
+            mKeySource = BigEndian::HostSwap32(aKeySequence);
             mKeyIndex  = (aKeySequence & 0x7f) + 1;
         }
 
@@ -1151,7 +1175,6 @@ private:
         void     MarkAsNotInUse(void) { SetAloc16(kNotInUse); }
         uint16_t GetAloc16(void) const { return GetAddress().GetIid().GetLocator(); }
         void     SetAloc16(uint16_t aAloc16) { GetAddress().GetIid().SetLocator(aAloc16); }
-        void     ApplyMeshLocalPrefix(const Ip6::NetworkPrefix &aPrefix) { GetAddress().SetPrefix(aPrefix); }
     };
 #endif
 
@@ -1210,7 +1233,6 @@ private:
     void       InitNeighbor(Neighbor &aNeighbor, const RxInfo &aRxInfo);
     void       ClearParentCandidate(void) { mParentCandidate.Clear(); }
     Error      CheckReachability(uint16_t aMeshDest, const Ip6::Header &aIp6Header);
-    uint16_t   GetNextHop(uint16_t aDestination) const;
     Error      SendDataRequest(const Ip6::Address &aDestination);
     void       HandleNotifierEvents(Events aEvents);
     void       SendDelayedResponse(TxMessage &aMessage, const DelayedResponseMetadata &aMetadata);
@@ -1221,7 +1243,9 @@ private:
     Error      SendChildUpdateRequest(ChildUpdateRequestMode aMode);
     Error      SendDataRequestAfterDelay(const Ip6::Address &aDestination, uint16_t aDelay);
     Error      SendChildUpdateRequest(void);
-    Error      SendChildUpdateResponse(const TlvList &aTlvList, const RxChallenge &aChallenge);
+    Error      SendChildUpdateResponse(const TlvList      &aTlvList,
+                                       const RxChallenge  &aChallenge,
+                                       const Ip6::Address &aDestination);
     void       SetRloc16(uint16_t aRloc16);
     void       SetStateDetached(void);
     void       SetStateChild(uint16_t aRloc16);
@@ -1401,12 +1425,12 @@ private:
     DelayTimer                   mDelayedResponseTimer;
     MsgTxTimer                   mMessageTransmissionTimer;
     DetachGracefullyTimer        mDetachGracefullyTimer;
+    Ip6::NetworkPrefix           mMeshLocalPrefix;
     Ip6::Netif::UnicastAddress   mLinkLocal64;
     Ip6::Netif::UnicastAddress   mMeshLocal64;
     Ip6::Netif::UnicastAddress   mMeshLocal16;
     Ip6::Netif::MulticastAddress mLinkLocalAllThreadNodes;
     Ip6::Netif::MulticastAddress mRealmLocalAllThreadNodes;
-    Ip6::Netif::UnicastAddress   mLeaderAloc;
 };
 
 } // namespace Mle

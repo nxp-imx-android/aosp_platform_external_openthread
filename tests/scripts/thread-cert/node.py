@@ -1880,8 +1880,8 @@ class NodeImpl:
         self.send_command(cmd)
         self._expect_done()
 
-    def get_addrs(self):
-        self.send_command('ipaddr')
+    def get_addrs(self, verbose=False):
+        self.send_command('ipaddr' + (' -v' if verbose else ''))
 
         return self._expect_results(r'\S+(:\S*)+')
 
@@ -2336,8 +2336,8 @@ class NodeImpl:
 
     def get_netdata(self):
         raw_netdata = self.netdata_show()
-        netdata = {'Prefixes': [], 'Routes': [], 'Services': [], 'Contexts': []}
-        key_list = ['Prefixes', 'Routes', 'Services', 'Contexts']
+        netdata = {'Prefixes': [], 'Routes': [], 'Services': [], 'Contexts': [], 'Commissioning': []}
+        key_list = ['Prefixes', 'Routes', 'Services', 'Contexts', 'Commissioning']
         key = None
 
         for i in range(0, len(raw_netdata)):

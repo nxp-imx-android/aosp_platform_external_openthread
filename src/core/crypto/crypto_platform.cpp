@@ -51,12 +51,12 @@
 
 #include "common/code_utils.hpp"
 #include "common/debug.hpp"
-#include "common/instance.hpp"
 #include "common/new.hpp"
 #include "config/crypto.h"
 #include "crypto/ecdsa.hpp"
 #include "crypto/hmac_sha256.hpp"
 #include "crypto/storage.hpp"
+#include "instance/instance.hpp"
 
 using namespace ot;
 using namespace Crypto;
@@ -110,7 +110,7 @@ OT_TOOL_WEAK otError otPlatCryptoAesSetKey(otCryptoContext *aContext, const otCr
     VerifyOrExit(aContext->mContextSize >= sizeof(mbedtls_aes_context), error = kErrorFailed);
 
     context = static_cast<mbedtls_aes_context *>(aContext->mContext);
-    VerifyOrExit((mbedtls_aes_setkey_enc(context, key.GetBytes(), (key.GetLength() * CHAR_BIT)) == 0),
+    VerifyOrExit((mbedtls_aes_setkey_enc(context, key.GetBytes(), (key.GetLength() * kBitsPerByte)) == 0),
                  error = kErrorFailed);
 
 exit:
