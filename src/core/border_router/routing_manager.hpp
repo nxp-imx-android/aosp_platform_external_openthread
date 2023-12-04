@@ -54,6 +54,7 @@
 #include "common/array.hpp"
 #include "common/error.hpp"
 #include "common/heap_allocatable.hpp"
+#include "common/heap_array.hpp"
 #include "common/linked_list.hpp"
 #include "common/locator.hpp"
 #include "common/message.hpp"
@@ -86,6 +87,7 @@ public:
     typedef NetworkData::RoutePreference       RoutePreference;     ///< Route preference (high, medium, low).
     typedef otBorderRoutingPrefixTableIterator PrefixTableIterator; ///< Prefix Table Iterator.
     typedef otBorderRoutingPrefixTableEntry    PrefixTableEntry;    ///< Prefix Table Entry.
+    typedef otBorderRoutingRouterEntry         RouterEntry;         ///< Router Entry.
 
     /**
      * This constant specifies the maximum number of route prefixes that may be published by `RoutingManager`
@@ -119,9 +121,9 @@ public:
      */
     enum Dhcp6PdState : uint8_t
     {
-        kDhcp6PdStateDisabled = OT_BORDER_ROUTING_STATE_DISABLED, ///< Disabled.
-        kDhcp6PdStateStopped  = OT_BORDER_ROUTING_STATE_STOPPED,  ///< Enabled, but currently stopped.
-        kDhcp6PdStateRunning  = OT_BORDER_ROUTING_STATE_RUNNING,  ///< Enabled, and running.
+        kDhcp6PdStateDisabled = OT_BORDER_ROUTING_DHCP6_PD_STATE_DISABLED, ///< Disabled.
+        kDhcp6PdStateStopped  = OT_BORDER_ROUTING_DHCP6_PD_STATE_STOPPED,  ///< Enabled, but currently stopped.
+        kDhcp6PdStateRunning  = OT_BORDER_ROUTING_DHCP6_PD_STATE_RUNNING,  ///< Enabled, and running.
     };
 
     /**
@@ -465,6 +467,21 @@ public:
         return mDiscoveredPrefixTable.GetNextEntry(aIterator, aEntry);
     }
 
+    /**
+     * Iterates over discovered router entries on infrastructure link.
+     *
+     * @param[in,out] aIterator  An iterator.
+     * @param[out]    aEntry     A reference to the entry to populate.
+     *
+     * @retval kErrorNone        Got the next router info, @p aEntry is updated and @p aIterator is advanced.
+     * @retval kErrorNotFound    No more routers.
+     *
+     */
+    Error GetNextRouterEntry(PrefixTableIterator &aIterator, RouterEntry &aEntry) const
+    {
+        return mDiscoveredPrefixTable.GetNextRouter(aIterator, aEntry);
+    }
+
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
     /**
      * Determines whether to enable/disable SRP server when the auto-enable mode is changed on SRP server.
@@ -618,8 +635,11 @@ private:
 
         TimeMilli CalculateNextStaleTime(TimeMilli aNow) const;
 
+        void DetermineAndSetFlags(Ip6::Nd::RouterAdvertMessage &aRaMessage) const;
+
         void  InitIterator(PrefixTableIterator &aIterator) const;
         Error GetNextEntry(PrefixTableIterator &aIterator, PrefixTableEntry &aEntry) const;
+        Error GetNextRouter(PrefixTableIterator &aIterator, RouterEntry &aEntry) const;
 
         void HandleEntryTimer(void);
         void HandleRouterTimer(void);
@@ -752,11 +772,12 @@ private:
 
             enum EmptyChecker : uint8_t
             {
-                kContainsNoEntries
+                kContainsNoEntriesOrFlags
             };
 
             bool Matches(const Ip6::Address &aAddress) const { return aAddress == mAddress; }
-            bool Matches(EmptyChecker) const { return mEntries.IsEmpty(); }
+            bool Matches(EmptyChecker aChecker) const;
+            void CopyInfoTo(RouterEntry &aEntry) const;
 
             Router           *mNext;
             Ip6::Address      mAddress;
@@ -771,12 +792,23 @@ private:
         class Iterator : public PrefixTableIterator
         {
         public:
+            enum AdvanceMode : uint8_t
+            {
+                kToNextEntry,
+                kToNextRouter,
+            };
+
+            void Init(const LinkedList<Router> &aRouters);
+            void Advance(AdvanceMode aMode);
+
             const Router *GetRouter(void) const { return static_cast<const Router *>(mPtr1); }
-            void          SetRouter(const Router *aRouter) { mPtr1 = aRouter; }
             const Entry  *GetEntry(void) const { return static_cast<const Entry *>(mPtr2); }
-            void          SetEntry(const Entry *aEntry) { mPtr2 = aEntry; }
             TimeMilli     GetInitTime(void) const { return TimeMilli(mData32); }
-            void          SetInitTime(void) { mData32 = TimerMilli::GetNow().GetValue(); }
+
+        private:
+            void SetRouter(const Router *aRouter) { mPtr1 = aRouter; }
+            void SetEntry(const Entry *aEntry) { mPtr2 = aEntry; }
+            void SetInitTime(void) { mData32 = TimerMilli::GetNow().GetValue(); }
         };
 
         void         ProcessRaHeader(const Ip6::Nd::RouterAdvertMessage::Header &aRaHeader, Router &aRouter);
@@ -786,7 +818,7 @@ private:
         bool         Contains(const Entry::Checker &aChecker) const;
         void         RemovePrefix(const Entry::Matcher &aMatcher);
         void         RemoveOrDeprecateEntriesFromInactiveRouters(void);
-        void         RemoveRoutersWithNoEntries(void);
+        void         RemoveRoutersWithNoEntriesOrFlags(void);
         void         FreeRouters(LinkedList<Router> &aRouters);
         void         FreeEntries(LinkedList<Entry> &aEntries);
         void         UpdateNetworkDataOnChangeTo(Entry &aEntry);
@@ -954,7 +986,12 @@ private:
 
     typedef Ip6::Prefix OnMeshPrefix;
 
-    class OnMeshPrefixArray : public Array<OnMeshPrefix, kMaxOnMeshPrefixes>
+    class OnMeshPrefixArray :
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_USE_HEAP_ENABLE
+        public Heap::Array<OnMeshPrefix>
+#else
+        public Array<OnMeshPrefix, kMaxOnMeshPrefixes>
+#endif
     {
     public:
         void Add(const OnMeshPrefix &aPrefix);
@@ -1132,19 +1169,18 @@ private:
         explicit PdPrefixManager(Instance &aInstance);
 
         void               SetEnabled(bool aEnabled);
+        void               Start(void) { StartStop(/* aStart= */ true); }
+        void               Stop(void) { StartStop(/* aStart= */ false); }
         bool               IsRunning(void) const { return GetState() == Dhcp6PdState::kDhcp6PdStateRunning; }
         bool               HasPrefix(void) const { return IsValidOmrPrefix(mPrefix.GetPrefix()); }
         const Ip6::Prefix &GetPrefix(void) const { return mPrefix.GetPrefix(); }
-        Dhcp6PdState       GetState(void) const
-        {
-            // TODO: We need to stop and inform the platform when there is already a GUA prefix advertised in the
-            // network.
-            return mEnabled ? kDhcp6PdStateRunning : kDhcp6PdStateDisabled;
-        }
+        Dhcp6PdState       GetState(void) const;
 
         void  ProcessPlatformGeneratedRa(const uint8_t *aRouterAdvert, uint16_t aLength);
         Error GetPrefixInfo(PrefixTableEntry &aInfo) const;
         void  HandleTimer(void) { WithdrawPrefix(); }
+
+        static const char *StateToString(Dhcp6PdState aState);
 
         static bool IsValidPdPrefix(const Ip6::Prefix &aPrefix)
         {
@@ -1155,11 +1191,14 @@ private:
 
     private:
         Error Process(const Ip6::Nd::RouterAdvertMessage &aMessage);
+        void  EvaluateStateChange(Dhcp6PdState aOldState);
         void  WithdrawPrefix(void);
+        void  StartStop(bool aStart);
 
         using PlatformOmrPrefixTimer = TimerMilliIn<RoutingManager, &RoutingManager::HandlePdPrefixManagerTimer>;
 
         bool                         mEnabled;
+        bool                         mIsRunning;
         PlatformOmrPrefixTimer       mTimer;
         DiscoveredPrefixTable::Entry mPrefix;
     };

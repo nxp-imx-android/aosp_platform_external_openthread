@@ -37,10 +37,10 @@
 #if (OPENTHREAD_CONFIG_DATASET_UPDATER_ENABLE || OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE) && OPENTHREAD_FTD
 
 #include "common/code_utils.hpp"
-#include "common/instance.hpp"
 #include "common/locator_getters.hpp"
 #include "common/log.hpp"
 #include "common/random.hpp"
+#include "instance/instance.hpp"
 #include "meshcop/timestamp.hpp"
 
 namespace ot {
@@ -123,7 +123,7 @@ void DatasetUpdater::PreparePendingDataset(void)
     {
         uint32_t delay = kDefaultDelay;
 
-        SuccessOrExit(error = dataset.SetTlv(Tlv::kDelayTimer, delay));
+        SuccessOrExit(error = dataset.Write<DelayTimerTlv>(delay));
     }
 
     {
@@ -133,15 +133,20 @@ void DatasetUpdater::PreparePendingDataset(void)
         {
             timestamp = *Get<PendingDatasetManager>().GetTimestamp();
         }
+        else
+        {
+            timestamp.Clear();
+        }
 
         timestamp.AdvanceRandomTicks();
         dataset.SetTimestamp(Dataset::kPending, timestamp);
     }
 
     {
-        ActiveTimestampTlv *tlv = dataset.GetTlv<ActiveTimestampTlv>();
+        Timestamp timestamp = dataset.FindTlv(Tlv::kActiveTimestamp)->ReadValueAs<ActiveTimestampTlv>();
 
-        tlv->GetTimestamp().AdvanceRandomTicks();
+        timestamp.AdvanceRandomTicks();
+        dataset.SetTimestamp(Dataset::kActive, timestamp);
     }
 
     SuccessOrExit(error = Get<PendingDatasetManager>().Save(dataset));

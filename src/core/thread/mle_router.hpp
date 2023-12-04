@@ -422,17 +422,6 @@ public:
     void ResolveRoutingLoops(uint16_t aSourceMac, uint16_t aDestRloc16);
 
     /**
-     * Checks if a given Router ID has correct value.
-     *
-     * @param[in]  aRouterId  The Router ID value.
-     *
-     * @retval TRUE   If @p aRouterId is in correct range [0..62].
-     * @retval FALSE  If @p aRouterId is not a valid Router ID.
-     *
-     */
-    static bool IsRouterIdValid(uint8_t aRouterId) { return aRouterId <= kMaxRouterId; }
-
-    /**
      * Fills an ConnectivityTlv.
      *
      * @param[out]  aTlv  A reference to the tlv to be filled.
@@ -769,6 +758,8 @@ private:
     MeshCoP::SteeringData mSteeringData;
 #endif
 
+    Ip6::Netif::UnicastAddress mLeaderAloc;
+
     Callback<otThreadDiscoveryRequestCallback> mDiscoveryRequestCallback;
 };
 
@@ -779,35 +770,9 @@ DeclareTmfHandler(MleRouter, kUriAddressRelease);
 
 #if OPENTHREAD_MTD
 
-class MleRouter : public Mle
-{
-    friend class Mle;
-    friend class ot::Instance;
+typedef Mle MleRouter;
 
-public:
-    explicit MleRouter(Instance &aInstance)
-        : Mle(aInstance)
-    {
-    }
-
-    bool IsSingleton(void) const { return false; }
-
-    uint16_t GetNextHop(uint16_t aDestination) const { return Mle::GetNextHop(aDestination); }
-
-    Error RemoveNeighbor(Neighbor &) { return BecomeDetached(); }
-    void  RemoveRouterLink(Router &) { IgnoreError(BecomeDetached()); }
-
-    static bool IsRouterIdValid(uint8_t aRouterId) { return aRouterId <= kMaxRouterId; }
-
-    Error SendChildUpdateRequest(void) { return Mle::SendChildUpdateRequest(); }
-
-    Error CheckReachability(uint16_t aMeshDest, const Ip6::Header &aIp6Header)
-    {
-        return Mle::CheckReachability(aMeshDest, aIp6Header);
-    }
-};
-
-#endif // OPENTHREAD_MTD
+#endif
 
 } // namespace Mle
 
