@@ -81,3 +81,8 @@
  *
  */
 #define OPENTHREAD_POSIX_CONFIG_THREAD_NETIF_DEFAULT_NAME "thread-wpan"
+
+/**
+ * Avoids killing the ot-daemon process when the infra link disappears.
+ */
+#define OPENTHREAD_POSIX_CONFIG_EXIT_ON_INFRA_NETIF_LOST_ENABLE 0
