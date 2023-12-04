@@ -46,7 +46,6 @@
 #include "spinel.h"
 
 #include <errno.h>
-#include <limits.h>
 
 #ifndef SPINEL_PLATFORM_HEADER
 /* These are all already included in the spinel platform header
@@ -241,7 +240,7 @@ spinel_ssize_t spinel_packed_uint_decode(const uint8_t *bytes, spinel_size_t len
 
     do
     {
-        if ((len < sizeof(uint8_t)) || (i >= sizeof(unsigned int) * CHAR_BIT))
+        if ((len < sizeof(uint8_t)) || (i >= sizeof(unsigned int) * SPINEL_BITS_PER_BYTE))
         {
             ret = -1;
             break;
@@ -1263,6 +1262,7 @@ const char *spinel_prop_key_to_cstr(spinel_prop_key_t prop_key)
         {SPINEL_PROP_MAC_PROMISCUOUS_MODE, "MAC_PROMISCUOUS_MODE"},
         {SPINEL_PROP_MAC_ENERGY_SCAN_RESULT, "MAC_ENERGY_SCAN_RESULT"},
         {SPINEL_PROP_MAC_DATA_POLL_PERIOD, "MAC_DATA_POLL_PERIOD"},
+        {SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE, "MAC_RX_ON_WHEN_IDLE_MODE"},
         {SPINEL_PROP_MAC_ALLOWLIST, "MAC_ALLOWLIST"},
         {SPINEL_PROP_MAC_ALLOWLIST_ENABLED, "MAC_ALLOWLIST_ENABLED"},
         {SPINEL_PROP_MAC_EXTENDED_ADDR, "MAC_EXTENDED_ADDR"},
@@ -1548,6 +1548,8 @@ const char *spinel_status_to_cstr(spinel_status_t status)
         {SPINEL_STATUS_ITEM_NOT_FOUND, "ITEM_NOT_FOUND"},
         {SPINEL_STATUS_INVALID_COMMAND_FOR_PROP, "INVALID_COMMAND_FOR_PROP"},
         {SPINEL_STATUS_RESPONSE_TIMEOUT, "RESPONSE_TIMEOUT"},
+        {SPINEL_STATUS_SWITCHOVER_DONE, "SWITCHOVER_DONE"},
+        {SPINEL_STATUS_SWITCHOVER_FAILED, "SWITCHOVER_FAILED"},
         {SPINEL_STATUS_JOIN_FAILURE, "JOIN_FAILURE"},
         {SPINEL_STATUS_JOIN_SECURITY, "JOIN_SECURITY"},
         {SPINEL_STATUS_JOIN_NO_PEERS, "JOIN_NO_PEERS"},
@@ -1606,6 +1608,8 @@ const char *spinel_capability_to_cstr(spinel_capability_t capability)
         {SPINEL_CAP_NET_THREAD_1_1, "NET_THREAD_1_1"},
         {SPINEL_CAP_NET_THREAD_1_2, "NET_THREAD_1_2"},
         {SPINEL_CAP_RCP_API_VERSION, "RCP_API_VERSION"},
+        {SPINEL_CAP_RCP_MIN_HOST_API_VERSION, "RCP_MIN_HOST_API_VERSION"},
+        {SPINEL_CAP_RCP_RESET_TO_BOOTLOADER, "RCP_RESET_TO_BOOTLOADER"},
         {SPINEL_CAP_MAC_ALLOWLIST, "MAC_ALLOWLIST"},
         {SPINEL_CAP_MAC_RAW, "MAC_RAW"},
         {SPINEL_CAP_OOB_STEERING_DATA, "OOB_STEERING_DATA"},

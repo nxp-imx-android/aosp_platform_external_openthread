@@ -74,7 +74,7 @@ otError otUdpSend(otInstance *aInstance, otUdpSocket *aSocket, otMessage *aMessa
 {
     otError error;
 
-    VerifyOrExit(AsCoreType(aMessage).GetOrigin() != Message::kOriginThreadNetif, error = kErrorInvalidArgs);
+    VerifyOrExit(!AsCoreType(aMessage).IsOriginThreadNetif(), error = kErrorInvalidArgs);
 
     error = AsCoreType(aInstance).Get<Ip6::Udp>().SendTo(AsCoreType(aSocket), AsCoreType(aMessage),
                                                          AsCoreType(aMessageInfo));
@@ -124,10 +124,9 @@ otError otUdpSendDatagram(otInstance *aInstance, otMessage *aMessage, otMessageI
 {
     otError error;
 
-    VerifyOrExit(AsCoreType(aMessage).GetOrigin() != Message::kOriginThreadNetif, error = kErrorInvalidArgs);
+    VerifyOrExit(!AsCoreType(aMessage).IsOriginThreadNetif(), error = kErrorInvalidArgs);
 
-    return AsCoreType(aInstance).Get<Ip6::Udp>().SendDatagram(AsCoreType(aMessage), AsCoreType(aMessageInfo),
-                                                              Ip6::kProtoUdp);
+    return AsCoreType(aInstance).Get<Ip6::Udp>().SendDatagram(AsCoreType(aMessage), AsCoreType(aMessageInfo));
 exit:
     return error;
 }

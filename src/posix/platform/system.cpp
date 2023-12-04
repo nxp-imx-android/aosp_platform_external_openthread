@@ -72,10 +72,7 @@ static void processStateChange(otChangedFlags aFlags, void *aContext)
 #endif
 
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    if (gBackboneNetifIndex != 0)
-    {
-        platformBackboneStateChange(instance, aFlags);
-    }
+    ot::Posix::InfraNetif::Get().HandleBackboneStateChange(instance, aFlags);
 #endif
 }
 #endif
@@ -145,10 +142,6 @@ void platformInit(otPlatformConfig *aPlatformConfig)
 #endif
     platformRandomInit();
 
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneInit(aPlatformConfig->mBackboneInterfaceName);
-#endif
-
 #if OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE
     ot::Posix::InfraNetif::Get().Init();
 
@@ -178,8 +171,17 @@ void platformSetUp(otPlatformConfig *aPlatformConfig)
 
     VerifyOrExit(!gDryRun);
 
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneSetUp();
+#if OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE
+    if (aPlatformConfig->mBackboneInterfaceName != nullptr && strlen(aPlatformConfig->mBackboneInterfaceName) > 0)
+    {
+        int icmp6Sock = -1;
+
+#if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+        icmp6Sock = ot::Posix::InfraNetif::CreateIcmp6Socket(aPlatformConfig->mBackboneInterfaceName);
+#endif
+
+        otSysSetInfraNetif(aPlatformConfig->mBackboneInterfaceName, icmp6Sock);
+    }
 #endif
 
 #if OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE
@@ -246,10 +248,6 @@ void platformTearDown(void)
     ot::Posix::InfraNetif::Get().TearDown();
 #endif
 
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneTearDown();
-#endif
-
 exit:
     return;
 }
@@ -276,10 +274,6 @@ void platformDeinit(void)
 
 #if OPENTHREAD_POSIX_CONFIG_INFRA_IF_ENABLE
     ot::Posix::InfraNetif::Get().Deinit();
-#endif
-
-#if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    platformBackboneDeinit();
 #endif
 
 exit:

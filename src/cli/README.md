@@ -89,7 +89,7 @@ Done
 - [parent](#parent)
 - [parentpriority](#parentpriority)
 - [partitionid](#partitionid)
-- [ping](#ping-async--i-source-ipaddr-size-count-interval-hoplimit-timeout)
+- [ping](#ping-async--i-source--m-ipaddr-size-count-interval-hoplimit-timeout)
 - [platform](#platform)
 - [pollperiod](#pollperiod-pollperiod)
 - [preferrouterid](#preferrouterid-routerid)
@@ -1549,13 +1549,19 @@ fe80:0:0:0:f3d9:2a82:c8d8:fe43
 Done
 ```
 
-Use `-v` to get more verbose information about the address.
+Use `-v` to get more verbose information about the address:
+
+- `origin`: can be `thread`, `slaac`, `dhcp6`, or `manual`, and indicates the origin of the address
+- `plen`: prefix length (in bits)
+- `preferred`: preferred flag (boolean)
+- `valid`: valid flag (boolean)
 
 ```bash
 > ipaddr -v
-fdde:ad00:beef:0:0:ff:fe00:0 origin:thread
-fdde:ad00:beef:0:558:f56b:d688:799 origin:thread
-fe80:0:0:0:f3d9:2a82:c8d8:fe43 origin:thread
+fd5e:18fa:f4a5:b8:0:ff:fe00:fc00 origin:thread plen:64 preferred:0 valid:1
+fd5e:18fa:f4a5:b8:0:ff:fe00:dc00 origin:thread plen:64 preferred:0 valid:1
+fd5e:18fa:f4a5:b8:f8e:5d95:87a0:e82c origin:thread plen:64 preferred:0 valid:1
+fe80:0:0:0:4891:b191:e277:8826 origin:thread plen:64 preferred:1 valid:1
 Done
 ```
 
@@ -2335,6 +2341,21 @@ Gets the IPv4 configured CIDR in the NAT64 translator.
 Done
 ```
 
+### nat64 cidr \<IPv4 address\>
+
+Sets the IPv4 CIDR in the NAT64 translator.
+
+Note:
+
+- `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is required.
+- A valid CIDR must have a non-zero prefix length.
+- When updating the CIDR, NAT64 translator will be reset and all existing sessions will be expired.
+
+```bash
+> nat64 cidr 192.168.100.0/24
+Done
+```
+
 ### nat64 disable
 
 Disable NAT64 functions, including the translator and the prefix publishing.
@@ -2722,12 +2743,13 @@ Set the preferred Thread Leader Partition ID.
 Done
 ```
 
-### ping \[async\] \[-I source\] \<ipaddr\> \[size\] \[count\] \[interval\] \[hoplimit\] \[timeout\]
+### ping \[async\] \[-I source\] \[-m] \<ipaddr\> \[size\] \[count\] \[interval\] \[hoplimit\] \[timeout\]
 
 Send an ICMPv6 Echo Request.
 
 - async: Use the non-blocking mode. New commands are allowed before the ping process terminates.
 - source: The source IPv6 address of the echo request.
+- -m: multicast loop, which allows looping back pings to multicast addresses that the device itself is subscribed to.
 - size: The number of data bytes to be sent.
 - count: The number of ICMPv6 Echo Requests to be sent.
 - interval: The interval between two consecutive ICMPv6 Echo Requests in seconds. The value may have fractional form, for example `0.5`.
@@ -3066,6 +3088,17 @@ Signal a platform reset.
 
 ```bash
 > reset
+```
+
+### reset bootloader
+
+Signal a platform reset to bootloader mode, if supported.
+
+Requires `OPENTHREAD_CONFIG_PLATFORM_BOOTLOADER_MODE_ENABLE`.
+
+```bash
+> reset bootloader
+Done
 ```
 
 ### rloc16
@@ -3598,7 +3631,6 @@ Done
 > trel peers list
 001 ExtAddr:5e5785ba3a63adb9 ExtPanId:f0d9c001f00d2e43 SockAddr:[fe80:0:0:0:cc79:2a29:d311:1aea]:9202
 002 ExtAddr:ce792a29d3111aea ExtPanId:dead00beef00cafe SockAddr:[fe80:0:0:0:5c57:85ba:3a63:adb9]:9203
->>>>>>> [trel] implement new TREL model using DNS-SD
 Done
 ```
 

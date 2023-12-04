@@ -39,13 +39,12 @@
 #include <openthread/thread.h>
 #include <openthread/platform/toolchain.h>
 
+#include "common/const_cast.hpp"
 #include "common/encoding.hpp"
 #include "common/error.hpp"
 #include "common/type_traits.hpp"
 
 namespace ot {
-
-using ot::Encoding::BigEndian::HostSwap16;
 
 class Message;
 
@@ -173,6 +172,77 @@ public:
      *
      */
     Error AppendTo(Message &aMessage) const;
+
+    /**
+     * Reads the value of TLV treating it as a given simple TLV type.
+     *
+     * This method requires the TLV to be already validated, in particular, its length MUST NOT be less than the
+     * required size of the value type. The TLV MUST NOT be extended. If these conditions are not met, the behavior of
+     * this method is undefined.
+     *
+     * @tparam  SimpleTlvType   The simple TLV type to read (must be a sub-class of `SimpleTlvInfo`).
+     *
+     * @returns The TLV value as `SimpleTlvType::ValueType`.
+     *
+     */
+    template <typename SimpleTlvType> const typename SimpleTlvType::ValueType &ReadValueAs(void) const
+    {
+        return *reinterpret_cast<const typename SimpleTlvType::ValueType *>(this + 1);
+    }
+
+    /**
+     * Reads the value of TLV treating it as a given integer-value TLV type.
+     *
+     * This method requires the TLV to be already validated, in particular, its length MUST NOT be less than the
+     * required size of the value type. The TLV MUST NOT be extended. If these conditions are not met, the behavior of
+     * this method is undefined.
+     *
+     * @tparam  UintTlvType     The integer simple TLV type to read (must be a sub-class of `UintTlvInfo`).
+     *
+     * @returns The TLV value as `UintTlvInfo::UintValueType`.
+     *
+     */
+    template <typename UintTlvType> typename UintTlvType::UintValueType ReadValueAs(void) const
+    {
+        return BigEndian::Read<typename UintTlvType::UintValueType>(reinterpret_cast<const uint8_t *>(this + 1));
+    }
+
+    /**
+     * Writes the value of TLV treating it as a given simple TLV type.
+     *
+     * This method requires the TLV to be already validated, in particular, its length MUST NOT be less than the
+     * required size of the value type. The TLV MUST NOT be extended. If these conditions are not met, the behavior of
+     * this method is undefined.
+     *
+     * @tparam  SimpleTlvType   The simple TLV type to read (must be a sub-class of `SimpleTlvInfo`).
+     *
+     * @param[in] aValue   The new TLV value.
+     *
+     */
+    template <typename SimpleTlvType> void WriteValueAs(const typename SimpleTlvType::ValueType &aValue)
+    {
+        memcpy(this + 1, &aValue, sizeof(aValue));
+    }
+
+    /**
+     * Writes the value of TLV treating it as a given integer-value TLV type.
+     *
+     * This method requires the TLV to be already validated, in particular, its length MUST NOT be less than the
+     * required size of the value type. The TLV MUST NOT be extended. If these conditions are not met, the behavior of
+     * this method is undefined.
+     *
+     * @tparam  UintTlvType     The integer simple TLV type to read (must be a sub-class of `UintTlvInfo`).
+     *
+     * @param[in]  aValue   The new TLV value.
+     *
+     */
+    template <typename UintTlvType> void WriteValueAs(typename UintTlvType::UintValueType aValue)
+    {
+        return BigEndian::Write<typename UintTlvType::UintValueType>(aValue, reinterpret_cast<uint8_t *>(this + 1));
+    }
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Static methods for reading/finding/appending TLVs in a `Message`.
 
     /**
      * Reads a TLV's value in a message at a given offset expecting a minimum length for the value.
@@ -538,6 +608,68 @@ public:
         return AppendStringTlv(aMessage, StringTlvType::kType, StringTlvType::kMaxStringLength, aValue);
     }
 
+    //------------------------------------------------------------------------------------------------------------------
+    // Static methods for finding TLVs within a sequence of TLVs.
+
+    /**
+     * Searches in a given sequence of TLVs to find the first TLV of a given type.
+     *
+     * @param[in]  aTlvsStart  A pointer to the start of the sequence of TLVs to search within.
+     * @param[in]  aTlvsLength The length (number of bytes) in the TLV sequence.
+     * @param[in]  aType       The TLV type to search for.
+     *
+     * @returns A pointer to the TLV within the TLV sequence if found, or `nullptr` if not found.
+     *
+     */
+    static const Tlv *FindTlv(const void *aTlvsStart, uint16_t aTlvsLength, uint8_t aType);
+
+    /**
+     * Searches in a given sequence of TLVs to find the first TLV of a given type.
+     *
+     * @param[in]  aTlvsStart  A pointer to the start of the sequence of TLVs to search within.
+     * @param[in]  aTlvsLength The length (number of bytes) in the TLV sequence.
+     * @param[in]  aType       The TLV type to search for.
+     *
+     * @returns A pointer to the TLV within the TLV sequence if found, or `nullptr` if not found.
+     *
+     */
+    static Tlv *FindTlv(void *aTlvsStart, uint16_t aTlvsLength, uint8_t aType)
+    {
+        return AsNonConst(FindTlv(AsConst(aTlvsStart), aTlvsLength, aType));
+    }
+
+    /**
+     * Searches in a given sequence of TLVs to find the first TLV with a give template `TlvType`.
+     *
+     * @tparam kTlvType        The TLV Type.
+     *
+     * @param[in]  aTlvsStart  A pointer to the start of the sequence of TLVs to search within.
+     * @param[in]  aTlvsLength The length (number of bytes) in TLV sequence.
+     *
+     * @returns A pointer to the TLV if found, or `nullptr` if not found.
+     *
+     */
+    template <typename TlvType> static TlvType *Find(void *aTlvsStart, uint16_t aTlvsLength)
+    {
+        return static_cast<TlvType *>(FindTlv(aTlvsStart, aTlvsLength, TlvType::kType));
+    }
+
+    /**
+     * Searches in a given sequence of TLVs to find the first TLV with a give template `TlvType`.
+     *
+     * @tparam kTlvType        The TLV Type.
+     *
+     * @param[in]  aTlvsStart  A pointer to the start of the sequence of TLVs to search within.
+     * @param[in]  aTlvsLength The length (number of bytes) in TLV sequence.
+     *
+     * @returns A pointer to the TLV if found, or `nullptr` if not found.
+     *
+     */
+    template <typename TlvType> static const TlvType *Find(const void *aTlvsStart, uint16_t aTlvsLength)
+    {
+        return static_cast<const TlvType *>(FindTlv(aTlvsStart, aTlvsLength, TlvType::kType));
+    }
+
 protected:
     static const uint8_t kExtendedLength = 255; // Extended Length value.
 
@@ -554,7 +686,7 @@ private:
         uint16_t mSize;
     };
 
-    static Error FindTlv(const Message &aMessage, uint8_t aType, void *aValue, uint8_t aLength);
+    static Error FindTlv(const Message &aMessage, uint8_t aType, void *aValue, uint16_t aLength);
     static Error AppendTlv(Message &aMessage, uint8_t aType, const void *aValue, uint8_t aLength);
     static Error ReadStringTlv(const Message &aMessage, uint16_t aOffset, uint8_t aMaxStringLength, char *aValue);
     static Error FindStringTlv(const Message &aMessage, uint8_t aType, uint8_t aMaxStringLength, char *aValue);
@@ -575,7 +707,7 @@ public:
      * Returns the Length value.
      *
      */
-    uint16_t GetLength(void) const { return HostSwap16(mLength); }
+    uint16_t GetLength(void) const { return BigEndian::HostSwap16(mLength); }
 
     /**
      * Sets the Length value.
@@ -586,7 +718,7 @@ public:
     void SetLength(uint16_t aLength)
     {
         Tlv::SetLength(kExtendedLength);
-        mLength = HostSwap16(aLength);
+        mLength = BigEndian::HostSwap16(aLength);
     }
 
 private:
