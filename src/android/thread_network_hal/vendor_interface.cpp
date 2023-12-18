@@ -86,7 +86,10 @@ otError VendorInterface::SendFrame(const uint8_t *aFrame, uint16_t aLength)
 
 otError VendorInterface::HardwareReset(void) { return sHalInterface->HardwareReset(); }
 
-const otRcpInterfaceMetrics *VendorInterface::GetRcpInterfaceMetrics(void) const { return nullptr; }
+const otRcpInterfaceMetrics *VendorInterface::GetRcpInterfaceMetrics(void) const
+{
+    return sHalInterface->GetRcpInterfaceMetrics();
+}
 } // namespace Posix
 } // namespace ot
 
