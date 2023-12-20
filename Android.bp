@@ -654,12 +654,15 @@ cc_defaults {
     cflags: [
         "-DMBEDTLS_CONFIG_FILE=\"mbedtls-config.h\"",
         "-DOPENTHREAD_CONFIG_ANDROID_VERSION_HEADER_ENABLE=1",
+        "-DOPENTHREAD_CONFIG_DNS_CLIENT_ENABLE=1",
+        "-DOPENTHREAD_CONFIG_ECDSA_ENABLE=1",
         "-DOPENTHREAD_CONFIG_FILE=\"openthread-config-android-version.h\"",
         "-DOPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE=1",
         "-DOPENTHREAD_CONFIG_MAC_FILTER_ENABLE=1",
         "-DOPENTHREAD_CONFIG_MLR_ENABLE=1",
         "-DOPENTHREAD_CONFIG_NCP_HDLC_ENABLE=1",
         "-DOPENTHREAD_CONFIG_PING_SENDER_ENABLE=1",
+        "-DOPENTHREAD_CONFIG_SRP_CLIENT_ENABLE=1",
         "-DOPENTHREAD_CONFIG_PLATFORM_FLASH_API_ENABLE=0",
         "-DOPENTHREAD_EXAMPLES_SIMULATION=1",
         "-DOPENTHREAD_CONFIG_TCP_ENABLE=0",
@@ -671,6 +674,7 @@ cc_defaults {
         "-DPACKAGE_TARNAME=\"openthread\"",
         "-DPACKAGE_URL=\"http://github.com/openthread/openthread\"",
         "-DSPINEL_PLATFORM_HEADER=\"spinel_platform.h\"",
+        "-Wno-implicit-fallthrough",
     ],
 }
 
