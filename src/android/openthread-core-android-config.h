@@ -43,7 +43,7 @@
  * The run time data path.
  *
  */
-#define OPENTHREAD_CONFIG_POSIX_SETTINGS_PATH "/data/misc/apexdata/com.android.tethering/threadnetwork"
+#define OPENTHREAD_CONFIG_POSIX_SETTINGS_PATH "/data/misc/apexdata/com.android.tethering/ot-daemon"
 
 /**
  * @def OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME
@@ -51,7 +51,7 @@
  * Define socket basename used by POSIX app daemon.
  *
  */
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/data/misc/apexdata/com.android.tethering/threadnetwork/openthread-%s"
+#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/data/misc/apexdata/com.android.tethering/ot-daemon/openthread-%s"
 
 /**
  * @def OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE
