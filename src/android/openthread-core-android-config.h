@@ -51,7 +51,7 @@
  * Define socket basename used by POSIX app daemon.
  *
  */
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/data/misc/apexdata/com.android.tethering/ot-daemon/openthread-%s"
+#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/dev/socket/ot-daemon/%s"
 
 /**
  * @def OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE
