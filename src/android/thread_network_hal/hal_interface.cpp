@@ -146,11 +146,7 @@ uint32_t HalInterface::GetBusSpeed(void) const
     return kBusSpeed;
 }
 
-otError HalInterface::HardwareReset(void)
-{
-    mThreadChip->hardwareReset();
-    return OT_ERROR_NONE;
-}
+otError HalInterface::HardwareReset(void) { return StatusToError(mThreadChip->hardwareReset()); }
 
 void HalInterface::UpdateFdSet(void *aMainloopContext)
 {
@@ -270,7 +266,7 @@ exit:
     return;
 }
 
-otError HalInterface::StatusToError(ScopedAStatus &aStatus)
+otError HalInterface::StatusToError(const ScopedAStatus &aStatus) const
 {
     otError error = OT_ERROR_FAILED;
 
