@@ -164,7 +164,7 @@ public:
 private:
     void        ReceiveFrameCallback(const std::vector<uint8_t> &aFrame);
     static void BinderDeathCallback(void *aContext);
-    otError     StatusToError(::ndk::ScopedAStatus &aStatus);
+    otError     StatusToError(const ::ndk::ScopedAStatus &aStatus) const;
 
     class ThreadChipCallback : public ::aidl::android::hardware::threadnetwork::BnThreadChipCallback
     {
