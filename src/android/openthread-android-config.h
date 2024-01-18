@@ -86,3 +86,10 @@
  * Avoids killing the ot-daemon process when the infra link disappears.
  */
 #define OPENTHREAD_POSIX_CONFIG_EXIT_ON_INFRA_NETIF_LOST_ENABLE 0
+
+/**
+ * Enables the posix platform to support power calibration.
+ *
+ * This flag is needed by the framework API `setChannelTargetPower()` to set the target power of each channel.
+ */
+#define OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE 1
