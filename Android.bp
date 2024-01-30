@@ -603,7 +603,6 @@ cc_library_static {
 
 cc_binary {
     name: "ot-ctl",
-    vendor: true,
     defaults: ["ot_posix_cflags_defaults"],
     generated_headers: ["ot_version_header"],
 
