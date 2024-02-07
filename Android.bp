@@ -27,6 +27,7 @@
 //
 
 package {
+    default_team: "trendy_team_fwk_thread_network",
     default_applicable_licenses: ["external_openthread_license"],
 }
 
@@ -69,7 +70,7 @@ license {
 }
 
 cc_defaults {
-    name : "ot_posix_cflags_defaults",
+    name: "ot_posix_cflags_defaults",
     cflags: [
         "-DMBEDTLS_CONFIG_FILE=\"mbedtls-config.h\"",
         "-DOPENTHREAD_CONFIG_FILE=\"src/android/openthread-android-config.h\"",
@@ -482,7 +483,7 @@ filegroup {
 
 cc_library_static {
     name: "ot-core",
-    apex_available: [ "com.android.tethering" ],
+    apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
     defaults: [
         "ot_config_defaults",
@@ -549,7 +550,7 @@ cc_library_static {
 
 cc_library_static {
     name: "libopenthread-cli",
-    apex_available: [ "com.android.tethering" ],
+    apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
     defaults: [
         "ot_config_defaults",
@@ -629,7 +630,7 @@ cc_defaults {
 }
 
 cc_defaults {
-    name : "ot_simulation_cflags_defaults",
+    name: "ot_simulation_cflags_defaults",
 
     local_include_dirs: [
         "examples/platforms/simulation",
@@ -846,7 +847,6 @@ cc_library_static {
         "src/lib/platform/exit_code.c",
     ],
 }
-
 
 cc_library_static {
     name: "openthread-spinel-rcp",
