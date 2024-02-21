@@ -102,23 +102,6 @@ genrule {
     ],
 }
 
-soong_config_module_type {
-    name: "ot_config_cc_defaults",
-    module_type: "cc_defaults",
-    config_namespace: "openthread",
-    bool_variables: ["diag"],
-    properties: ["cflags"],
-}
-
-ot_config_cc_defaults {
-    name: "ot_config_defaults",
-    soong_config_variables: {
-        diag: {
-            cflags: ["-DOPENTHREAD_CONFIG_DIAG_ENABLE=1"],
-        },
-    },
-}
-
 filegroup {
     name: "openthread_core_srcs",
     srcs: [
@@ -486,7 +469,6 @@ cc_library_static {
     apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
     defaults: [
-        "ot_config_defaults",
         "ot-daemon-debuggable-cc-defaults",
         "ot_posix_cflags_defaults",
     ],
@@ -553,7 +535,6 @@ cc_library_static {
     apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
     defaults: [
-        "ot_config_defaults",
         "ot-daemon-debuggable-cc-defaults",
         "ot_posix_cflags_defaults",
     ],
@@ -654,6 +635,7 @@ cc_defaults {
     cflags: [
         "-DMBEDTLS_CONFIG_FILE=\"mbedtls-config.h\"",
         "-DOPENTHREAD_CONFIG_ANDROID_VERSION_HEADER_ENABLE=1",
+        "-DOPENTHREAD_CONFIG_DIAG_ENABLE=1",
         "-DOPENTHREAD_CONFIG_DNS_CLIENT_ENABLE=1",
         "-DOPENTHREAD_CONFIG_ECDSA_ENABLE=1",
         "-DOPENTHREAD_CONFIG_FILE=\"openthread-config-android-version.h\"",
