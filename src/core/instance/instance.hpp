@@ -88,6 +88,7 @@
 #include "net/dhcp6_server.hpp"
 #include "net/dns_client.hpp"
 #include "net/dns_dso.hpp"
+#include "net/dnssd.hpp"
 #include "net/dnssd_server.hpp"
 #include "net/ip6.hpp"
 #include "net/ip6_filter.hpp"
@@ -95,8 +96,10 @@
 #include "net/nd_agent.hpp"
 #include "net/netif.hpp"
 #include "net/sntp_client.hpp"
+#include "net/srp_advertising_proxy.hpp"
 #include "net/srp_client.hpp"
 #include "net/srp_server.hpp"
+#include "radio/ble_secure.hpp"
 #include "thread/address_resolver.hpp"
 #include "thread/announce_begin_server.hpp"
 #include "thread/announce_sender.hpp"
@@ -457,6 +460,12 @@ private:
     SettingsDriver mSettingsDriver;
     MessagePool    mMessagePool;
 
+#if OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
+    // DNS-SD (mDNS) platform is initialized early to
+    // allow other modules to use it.
+    Dnssd mDnssd;
+#endif
+
     Ip6::Ip6    mIp6;
     ThreadNetif mThreadNetif;
     Tmf::Agent  mTmfAgent;
@@ -499,6 +508,10 @@ private:
 
 #if OPENTHREAD_CONFIG_SNTP_CLIENT_ENABLE
     Sntp::Client mSntpClient;
+#endif
+
+#if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
+    BackboneRouter::Local mBackboneRouterLocal;
 #endif
 
     MeshCoP::ActiveDatasetManager  mActiveDataset;
@@ -547,7 +560,7 @@ private:
     MeshCoP::Commissioner mCommissioner;
 #endif
 
-#if OPENTHREAD_CONFIG_DTLS_ENABLE
+#if OPENTHREAD_CONFIG_SECURE_TRANSPORT_ENABLE
     Tmf::SecureAgent mTmfSecureAgent;
 #endif
 
@@ -569,7 +582,6 @@ private:
 #endif
 
 #if OPENTHREAD_FTD && OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-    BackboneRouter::Local   mBackboneRouterLocal;
     BackboneRouter::Manager mBackboneRouterManager;
 #endif
 
@@ -583,6 +595,9 @@ private:
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
     Srp::Server mSrpServer;
+#if OPENTHREAD_CONFIG_SRP_SERVER_ADVERTISING_PROXY_ENABLE
+    Srp::AdvertisingProxy mSrpAdvertisingProxy;
+#endif
 #endif
 
 #if OPENTHREAD_FTD
@@ -616,6 +631,10 @@ private:
 
 #if OPENTHREAD_CONFIG_COAP_SECURE_API_ENABLE
     Coap::CoapSecure mApplicationCoapSecure;
+#endif
+
+#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+    Ble::BleSecure mApplicationBleSecure;
 #endif
 
 #if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
@@ -830,7 +849,7 @@ template <> inline Ip6::Mpl &Instance::Get(void) { return mIp6.mMpl; }
 
 template <> inline Tmf::Agent &Instance::Get(void) { return mTmfAgent; }
 
-#if OPENTHREAD_CONFIG_DTLS_ENABLE
+#if OPENTHREAD_CONFIG_SECURE_TRANSPORT_ENABLE
 template <> inline Tmf::SecureAgent &Instance::Get(void) { return mTmfSecureAgent; }
 #endif
 
@@ -854,6 +873,10 @@ template <> inline AnnounceBeginClient &Instance::Get(void) { return mCommission
 template <> inline EnergyScanClient &Instance::Get(void) { return mCommissioner.GetEnergyScanClient(); }
 
 template <> inline PanIdQueryClient &Instance::Get(void) { return mCommissioner.GetPanIdQueryClient(); }
+#endif
+
+#if OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
+template <> inline Dnssd &Instance::Get(void) { return mDnssd; }
 #endif
 
 #if OPENTHREAD_CONFIG_JOINER_ENABLE
@@ -1007,7 +1030,7 @@ template <> inline Utils::Otns &Instance::Get(void) { return mOtns; }
 template <> inline BorderRouter::RoutingManager &Instance::Get(void) { return mRoutingManager; }
 
 template <> inline BorderRouter::InfraIf &Instance::Get(void) { return mRoutingManager.mInfraIf; }
-#endif // OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
+#endif
 
 #if OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE
 template <> inline Nat64::Translator &Instance::Get(void) { return mNat64Translator; }
@@ -1015,6 +1038,13 @@ template <> inline Nat64::Translator &Instance::Get(void) { return mNat64Transla
 
 #if OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
 template <> inline Srp::Server &Instance::Get(void) { return mSrpServer; }
+#if OPENTHREAD_CONFIG_SRP_SERVER_ADVERTISING_PROXY_ENABLE
+template <> inline Srp::AdvertisingProxy &Instance::Get(void) { return mSrpAdvertisingProxy; }
+#endif
+#endif // OPENTHREAD_CONFIG_SRP_SERVER_ENABLE
+
+#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+template <> inline Ble::BleSecure &Instance::Get(void) { return mApplicationBleSecure; }
 #endif
 
 #endif // OPENTHREAD_MTD || OPENTHREAD_FTD

@@ -38,6 +38,7 @@
 #include "border_router/routing_manager.hpp"
 #include "common/arg_macros.hpp"
 #include "common/array.hpp"
+#include "common/numeric_limits.hpp"
 #include "common/time.hpp"
 #include "instance/instance.hpp"
 #include "net/icmp6.hpp"
@@ -57,6 +58,10 @@ static const char         kInfraIfAddress[] = "fe80::1";
 
 static constexpr uint32_t kValidLitime       = 2000;
 static constexpr uint32_t kPreferredLifetime = 1800;
+static constexpr uint32_t kInfiniteLifetime  = NumericLimits<uint32_t>::kMax;
+
+static constexpr uint32_t kRioValidLifetime       = 1800;
+static constexpr uint32_t kRioDeprecatingLifetime = 300;
 
 static constexpr uint16_t kMaxRaSize              = 800;
 static constexpr uint16_t kMaxDeprecatingPrefixes = 16;
@@ -224,6 +229,8 @@ void        SendRouterAdvert(const Ip6::Address &aAddress, const Icmp6Packet &aP
 void        SendNeighborAdvert(const Ip6::Address &aAddress, const Ip6::Nd::NeighborAdvertMessage &aNaMessage);
 void        DiscoverNat64Prefix(const Ip6::Prefix &aPrefix);
 
+extern "C" {
+
 #if OPENTHREAD_CONFIG_LOG_OUTPUT == OPENTHREAD_CONFIG_LOG_OUTPUT_PLATFORM_DEFINED
 void otPlatLog(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat, ...)
 {
@@ -242,8 +249,6 @@ void otPlatLog(otLogLevel aLogLevel, otLogRegion aLogRegion, const char *aFormat
 
 //----------------------------------------------------------------------------------------------------------------------
 // `otPlatRadio
-
-extern "C" {
 
 otRadioCaps otPlatRadioGetCaps(otInstance *) { return OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF; }
 
@@ -338,6 +343,36 @@ otError otPlatInfraIfSendIcmp6Nd(uint32_t            aInfraIfIndex,
 
     return OT_ERROR_NONE;
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+
+Array<void *, 500> sHeapAllocatedPtrs;
+
+#if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
+
+void *otPlatCAlloc(size_t aNum, size_t aSize)
+{
+    void *ptr = calloc(aNum, aSize);
+
+    SuccessOrQuit(sHeapAllocatedPtrs.PushBack(ptr));
+
+    return ptr;
+}
+
+void otPlatFree(void *aPtr)
+{
+    if (aPtr != nullptr)
+    {
+        void **entry = sHeapAllocatedPtrs.Find(aPtr);
+
+        VerifyOrQuit(entry != nullptr, "A heap allocated item is freed twice");
+        sHeapAllocatedPtrs.Remove(*entry);
+    }
+
+    free(aPtr);
+}
+
+#endif
 
 } // extern "C"
 
@@ -530,35 +565,6 @@ void ValidateRouterAdvert(const Icmp6Packet &aPacket)
 exit:
     return;
 }
-
-//----------------------------------------------------------------------------------------------------------------------
-
-Array<void *, 500> sHeapAllocatedPtrs;
-
-#if OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE
-
-void *otPlatCAlloc(size_t aNum, size_t aSize)
-{
-    void *ptr = calloc(aNum, aSize);
-
-    SuccessOrQuit(sHeapAllocatedPtrs.PushBack(ptr));
-
-    return ptr;
-}
-
-void otPlatFree(void *aPtr)
-{
-    if (aPtr != nullptr)
-    {
-        void **entry = sHeapAllocatedPtrs.Find(aPtr);
-
-        VerifyOrQuit(entry != nullptr, "A heap allocated item is freed twice");
-        sHeapAllocatedPtrs.Remove(*entry);
-    }
-
-    free(aPtr);
-}
-#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -1382,6 +1388,8 @@ void TestOmrSelection(void)
     VerifyOrQuit(sRsEmitted);
     VerifyOrQuit(sRaValidated);
     VerifyOrQuit(sExpectedRios.SawAll());
+    VerifyOrQuit(sExpectedRios[0].mLifetime == kRioValidLifetime);
+
     Log("Received RA was validated");
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1409,17 +1417,20 @@ void TestOmrSelection(void)
     AdvanceTime(100);
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    // Make sure BR emits RA with new OMR prefix now.
+    // Make sure BR emits RA with the new OMR prefix now, and deprecates the old OMR prefix.
 
     sRaValidated = false;
     sExpectedPio = kPioAdvertisingLocalOnLink;
     sExpectedRios.Clear();
     sExpectedRios.Add(omrPrefix);
+    sExpectedRios.Add(localOmr);
 
     AdvanceTime(20000);
 
     VerifyOrQuit(sRaValidated);
     VerifyOrQuit(sExpectedRios.SawAll());
+    VerifyOrQuit(sExpectedRios[0].mLifetime == kRioValidLifetime);
+    VerifyOrQuit(sExpectedRios[1].mLifetime <= kRioDeprecatingLifetime);
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Check Network Data. We should now see that the local OMR prefix
@@ -1437,16 +1448,20 @@ void TestOmrSelection(void)
     AdvanceTime(100);
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    // Make sure BR emits RA with local OMR prefix again.
+    // Make sure BR emits RA with local OMR prefix again and start
+    // deprecating the previously added OMR prefix.
 
     sRaValidated = false;
     sExpectedRios.Clear();
+    sExpectedRios.Add(omrPrefix);
     sExpectedRios.Add(localOmr);
 
     AdvanceTime(20000);
 
     VerifyOrQuit(sRaValidated);
     VerifyOrQuit(sExpectedRios.SawAll());
+    VerifyOrQuit(sExpectedRios[0].mLifetime <= kRioDeprecatingLifetime);
+    VerifyOrQuit(sExpectedRios[1].mLifetime == kRioValidLifetime);
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Check Network Data. We should see that the local OMR prefix is
@@ -1454,6 +1469,21 @@ void TestOmrSelection(void)
 
     VerifyOmrPrefixInNetData(localOmr, /* aDefaultRoute */ false);
     VerifyExternalRouteInNetData(kUlaRoute, kWithAdvPioFlagSet);
+
+    //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    // Wait enough for old deprecating OMR prefix deprecating to expire.
+
+    sRaValidated = false;
+    sExpectedRios.Clear();
+    sExpectedRios.Add(omrPrefix);
+    sExpectedRios.Add(localOmr);
+
+    AdvanceTime(310000);
+
+    VerifyOrQuit(sRaValidated);
+    VerifyOrQuit(sExpectedRios.SawAll());
+    VerifyOrQuit(sExpectedRios[0].mLifetime == 0);
+    VerifyOrQuit(sExpectedRios[1].mLifetime == kRioValidLifetime);
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -1848,7 +1878,7 @@ void TestLocalOnLinkPrefixDeprecation(void)
     // Send an RA from router A with a new on-link (PIO) which is preferred over
     // the local on-link prefix.
 
-    SendRouterAdvert(routerAddressA, {Pio(onLinkPrefix, kValidLitime, kPreferredLifetime)});
+    SendRouterAdvert(routerAddressA, {Pio(onLinkPrefix, kInfiniteLifetime, kInfiniteLifetime)});
 
     //- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Check that the local on-link prefix is now deprecating in the new RA.
@@ -2023,7 +2053,10 @@ void TestDomainPrefixAsOmr(void)
 
     VerifyOrQuit(sExpectedRios[1].mPrefix == localOmr);
     VerifyOrQuit(sExpectedRios[1].mSawInRa);
-    VerifyOrQuit(sExpectedRios[1].mLifetime == 0);
+    VerifyOrQuit(sExpectedRios[1].mLifetime <= kRioDeprecatingLifetime);
+
+    // Wait long enough for deprecating RIO prefix to expire
+    AdvanceTime(3200000);
 
     sRaValidated = false;
     sExpectedPio = kPioAdvertisingLocalOnLink;
