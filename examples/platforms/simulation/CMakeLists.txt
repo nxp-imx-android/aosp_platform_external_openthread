@@ -59,9 +59,11 @@ set(OT_PLATFORM_DEFINES ${OT_PLATFORM_DEFINES} PARENT_SCOPE)
 
 add_library(openthread-simulation
     alarm.c
+    ble.c
     crypto.c
     diag.c
     dns.c
+    dnssd.c
     dso_transport.c
     entropy.c
     flash.c

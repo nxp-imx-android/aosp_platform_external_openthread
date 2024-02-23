@@ -92,6 +92,9 @@ Mle::Mle(Instance &aInstance)
     , mDataRequestAttempts(0)
     , mAnnounceChannel(0)
     , mAlternateChannel(0)
+#if OPENTHREAD_FTD
+    , mLinkRequestAttempts(0)
+#endif
     , mRloc16(Mac::kShortAddrInvalid)
     , mPreviousParentRloc(Mac::kShortAddrInvalid)
     , mAttachCounter(0)
@@ -120,7 +123,7 @@ Mle::Mle(Instance &aInstance)
     mParentCandidate.Clear();
     ResetCounters();
 
-    mLinkLocal64.InitAsThreadOrigin(/* aPreferred */ true);
+    mLinkLocal64.InitAsThreadOrigin();
     mLinkLocal64.GetAddress().SetToLinkLocalAddress(Get<Mac::Mac>().GetExtAddress());
 
     mMeshLocal64.InitAsThreadOriginMeshLocal();
@@ -262,7 +265,7 @@ exit:
 
 void Mle::ResetCounters(void)
 {
-    memset(&mCounters, 0, sizeof(mCounters));
+    ClearAllBytes(mCounters);
 #if OPENTHREAD_CONFIG_UPTIME_ENABLE
     mLastUpdatedTimestamp = Get<Uptime>().GetUptime();
 #endif
@@ -5094,7 +5097,7 @@ void Mle::ParentCandidate::Clear(void)
 {
     Instance &instance = GetInstance();
 
-    memset(reinterpret_cast<void *>(this), 0, sizeof(ParentCandidate));
+    ClearAllBytes(*this);
     Init(instance);
 }
 

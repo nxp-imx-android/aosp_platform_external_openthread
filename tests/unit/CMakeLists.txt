@@ -39,10 +39,14 @@ set(COMMON_INCLUDES_RCP
 
 set(COMMON_COMPILE_OPTIONS
     -DOPENTHREAD_FTD=1
+    -DOPENTHREAD_MTD=0
+    -DOPENTHREAD_RADIO=0
     -DOPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=1
 )
 
 set(COMMON_COMPILE_OPTIONS_RCP
+    -DOPENTHREAD_FTD=0
+    -DOPENTHREAD_MTD=0
     -DOPENTHREAD_RADIO=1
     -DOPENTHREAD_SPINEL_CONFIG_OPENTHREAD_MESSAGE_ENABLE=1
     -DOPENTHREAD_CONFIG_PLATFORM_UDP_ENABLE=0
@@ -1111,6 +1115,27 @@ target_link_libraries(ot-test-serial-number
 )
 
 add_test(NAME ot-test-serial-number COMMAND ot-test-serial-number)
+
+add_executable(ot-test-srp-adv-proxy
+    test_srp_adv_proxy.cpp
+)
+
+target_include_directories(ot-test-srp-adv-proxy
+    PRIVATE
+        ${COMMON_INCLUDES}
+)
+
+target_compile_options(ot-test-srp-adv-proxy
+    PRIVATE
+        ${COMMON_COMPILE_OPTIONS}
+)
+
+target_link_libraries(ot-test-srp-adv-proxy
+    PRIVATE
+        ${COMMON_LIBS}
+)
+
+add_test(NAME ot-test-srp-adv-proxy COMMAND ot-test-srp-adv-proxy)
 
 add_executable(ot-test-srp-server
     test_srp_server.cpp

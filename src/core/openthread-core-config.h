@@ -88,7 +88,6 @@
 #include "config/dns_client.h"
 #include "config/dns_dso.h"
 #include "config/dnssd_server.h"
-#include "config/dtls.h"
 #include "config/history_tracker.h"
 #include "config/ip6.h"
 #include "config/joiner.h"
@@ -109,11 +108,13 @@
 #include "config/platform.h"
 #include "config/power_calibration.h"
 #include "config/radio_link.h"
+#include "config/secure_transport.h"
 #include "config/sntp_client.h"
 #include "config/srp_client.h"
 #include "config/srp_server.h"
 #include "config/time_sync.h"
 #include "config/tmf.h"
+#include "config/trel.h"
 
 #undef OPENTHREAD_CORE_CONFIG_H_IN
 

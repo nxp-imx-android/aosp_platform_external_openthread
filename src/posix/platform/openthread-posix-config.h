@@ -52,40 +52,6 @@
 #endif
 
 /**
- * @def OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME
- *
- * Define socket basename used by POSIX app daemon.
- *
- */
-#ifndef OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME
-#ifdef __linux__
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/run/openthread-%s"
-#else
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_SOCKET_BASENAME "/tmp/openthread-%s"
-#endif
-#endif
-
-/**
- * @def OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE
- *
- * Define to 1 to enable POSIX daemon.
- *
- */
-#ifndef OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_ENABLE 0
-#endif
-
-/**
- * @def OPENTHREAD_POSIX_CONFIG_DAEMON_CLI_ENABLE
- *
- * Define to 1 to enable CLI for the posix daemon.
- *
- */
-#ifndef OPENTHREAD_POSIX_CONFIG_DAEMON_CLI_ENABLE
-#define OPENTHREAD_POSIX_CONFIG_DAEMON_CLI_ENABLE 1
-#endif
-
-/**
  * @def OPENTHREAD_POSIX_CONFIG_RCP_BUS
  *
  * This setting configures what type of RCP bus to use.
@@ -451,6 +417,16 @@
  */
 #ifndef OPENTHREAD_POSIX_CONFIG_EXIT_ON_INFRA_NETIF_LOST_ENABLE
 #define OPENTHREAD_POSIX_CONFIG_EXIT_ON_INFRA_NETIF_LOST_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_POSIX_CONFIG_TREL_TX_PACKET_POOL_SIZE
+ *
+ * This setting configures the capacity of TREL packet pool for transmission.
+ *
+ */
+#ifndef OPENTHREAD_POSIX_CONFIG_TREL_TX_PACKET_POOL_SIZE
+#define OPENTHREAD_POSIX_CONFIG_TREL_TX_PACKET_POOL_SIZE 5
 #endif
 
 #endif // OPENTHREAD_PLATFORM_CONFIG_H_

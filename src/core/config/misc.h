@@ -34,6 +34,16 @@
 #ifndef CONFIG_MISC_H_
 #define CONFIG_MISC_H_
 
+/**
+ * @addtogroup config-misc
+ *
+ * @brief
+ *   This module includes configuration variables for Miscellaneous constants.
+ *
+ * @{
+ *
+ */
+
 #include "config/coap.h"
 #include "config/srp_server.h"
 
@@ -571,5 +581,20 @@
 #ifndef OPENTHREAD_CONFIG_OPERATIONAL_DATASET_AUTO_INIT
 #define OPENTHREAD_CONFIG_OPERATIONAL_DATASET_AUTO_INIT 0
 #endif
+
+/**
+ * @def OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+ *
+ * Define to 1 to enable TCAT over BLE support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_BLE_TCAT_ENABLE
+#define OPENTHREAD_CONFIG_BLE_TCAT_ENABLE 0
+#endif
+
+/**
+ * @}
+ *
+ */
 
 #endif // CONFIG_MISC_H_

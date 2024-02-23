@@ -122,6 +122,10 @@ RadioSpinel::RadioSpinel(void)
     , mTxRadioEndUs(UINT64_MAX)
     , mRadioTimeRecalcStart(UINT64_MAX)
     , mRadioTimeOffset(UINT64_MAX)
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+    , mVendorRestorePropertiesCallback(nullptr)
+    , mVendorRestorePropertiesContext(nullptr)
+#endif
 {
     memset(mIidList, SPINEL_HEADER_INVALID_IID, sizeof(mIidList));
     memset(&mRadioSpinelMetrics, 0, sizeof(mRadioSpinelMetrics));
@@ -747,11 +751,26 @@ void RadioSpinel::HandleValueIs(spinel_prop_key_t aKey, const uint8_t *aBuffer, 
             break;
         }
     }
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+    else if (aKey >= SPINEL_PROP_VENDOR__BEGIN && aKey < SPINEL_PROP_VENDOR__END)
+    {
+        error = VendorHandleValueIs(aKey);
+    }
+#endif
 
 exit:
     UpdateParseErrorCount(error);
     LogIfFail("Failed to handle ValueIs", error);
 }
+
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+void RadioSpinel::SetVendorRestorePropertiesCallback(otRadioSpinelVendorRestorePropertiesCallback aCallback,
+                                                     void                                        *aContext)
+{
+    mVendorRestorePropertiesCallback = aCallback;
+    mVendorRestorePropertiesContext  = aContext;
+}
+#endif
 
 otError RadioSpinel::ParseRadioFrame(otRadioFrame   &aFrame,
                                      const uint8_t  *aBuffer,
@@ -1757,8 +1776,18 @@ void RadioSpinel::HandleTransmitDone(uint32_t          aCommand,
     }
 
 exit:
-    mState   = kStateTransmitDone;
-    mTxError = error;
+    // A parse error indicates an RCP misbehavior, so recover the RCP immediately.
+    mState = kStateTransmitDone;
+    if (error != OT_ERROR_PARSE)
+    {
+        mTxError = error;
+    }
+    else
+    {
+        mTxError = kErrorAbort;
+        HandleRcpTimeout();
+        RecoverFromRcpFailure();
+    }
     UpdateParseErrorCount(error);
     LogIfFail("Handle transmit done failed", error);
 }
@@ -2122,12 +2151,22 @@ void RadioSpinel::RecoverFromRcpFailure(void)
     case kStateSleep:
         break;
     case kStateReceive:
+#if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
+        // In case multiple PANs are running, don't force RCP to receive state.
+        IgnoreError(Set(SPINEL_PROP_MAC_RAW_STREAM_ENABLED, SPINEL_DATATYPE_BOOL_S, true));
+#else
         SuccessOrDie(Set(SPINEL_PROP_MAC_RAW_STREAM_ENABLED, SPINEL_DATATYPE_BOOL_S, true));
+#endif
         mState = kStateReceive;
         break;
     case kStateTransmitting:
     case kStateTransmitDone:
+#if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
+        // In case multiple PANs are running, don't force RCP to receive state.
+        IgnoreError(Set(SPINEL_PROP_MAC_RAW_STREAM_ENABLED, SPINEL_DATATYPE_BOOL_S, true));
+#else
         SuccessOrDie(Set(SPINEL_PROP_MAC_RAW_STREAM_ENABLED, SPINEL_DATATYPE_BOOL_S, true));
+#endif
         mTxError = OT_ERROR_ABORT;
         mState   = kStateTransmitDone;
         break;
@@ -2152,7 +2191,12 @@ void RadioSpinel::RestoreProperties(void)
     SuccessOrDie(Set(SPINEL_PROP_MAC_15_4_PANID, SPINEL_DATATYPE_UINT16_S, mPanId));
     SuccessOrDie(Set(SPINEL_PROP_MAC_15_4_SADDR, SPINEL_DATATYPE_UINT16_S, mShortAddress));
     SuccessOrDie(Set(SPINEL_PROP_MAC_15_4_LADDR, SPINEL_DATATYPE_EUI64_S, mExtendedAddress.m8));
+#if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
+    // In case multiple PANs are running, don't force RCP to change channel.
+    IgnoreError(Set(SPINEL_PROP_PHY_CHAN, SPINEL_DATATYPE_UINT8_S, mChannel));
+#else
     SuccessOrDie(Set(SPINEL_PROP_PHY_CHAN, SPINEL_DATATYPE_UINT8_S, mChannel));
+#endif
 
     if (mMacKeySet)
     {
@@ -2235,6 +2279,13 @@ void RadioSpinel::RestoreProperties(void)
     {
         SuccessOrDie(Set(SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE, SPINEL_DATATYPE_BOOL_S, mRxOnWhenIdle));
     }
+
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+    if (mVendorRestorePropertiesCallback)
+    {
+        mVendorRestorePropertiesCallback(mVendorRestorePropertiesContext);
+    }
+#endif
 
     CalcRcpTimeOffset();
 }

@@ -323,7 +323,12 @@ otError otPlatUdpBindToNetif(otUdpSocket *aUdpSocket, otNetifIdentifier aNetifId
     case OT_NETIF_BACKBONE:
     {
 #if OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
-#if __linux__
+        if (otSysGetInfraNetifName() == nullptr || otSysGetInfraNetifName()[0] == '\0')
+        {
+            otLogWarnPlat("No backbone interface given, %s fails.", __func__);
+            ExitNow(error = OT_ERROR_INVALID_ARGS);
+        }
+#ifdef __linux__
         VerifyOrExit(setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, otSysGetInfraNetifName(),
                                 strlen(otSysGetInfraNetifName())) == 0,
                      error = OT_ERROR_FAILED);

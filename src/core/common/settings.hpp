@@ -417,7 +417,7 @@ public:
          */
         void Init(void)
         {
-            memset(this, 0, sizeof(*this));
+            ClearAllBytes(*this);
             SetVersion(kThreadVersion1p1);
         }
 
@@ -767,7 +767,7 @@ public:
     } OT_TOOL_PACKED_END;
 #endif // OPENTHREAD_CONFIG_SRP_SERVER_ENABLE && OPENTHREAD_CONFIG_SRP_SERVER_PORT_SWITCH_ENABLE
 
-#if OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
+#if OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE && OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
     /**
      * Represents the Border Agent ID.
      *
@@ -784,7 +784,7 @@ public:
          * Initializes the `BorderAgentId` object.
          *
          */
-        void Init(void) { mId = {}; }
+        void Init(void) { ClearAllBytes(mId); }
 
         /**
          * Returns the Border Agent ID.
@@ -813,7 +813,7 @@ public:
 
         MeshCoP::BorderAgent::Id mId;
     } OT_TOOL_PACKED_END;
-#endif // OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
+#endif // OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE && OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
 
 protected:
     explicit SettingsBase(Instance &aInstance)
