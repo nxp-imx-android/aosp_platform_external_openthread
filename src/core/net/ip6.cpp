@@ -1037,6 +1037,19 @@ Error Ip6::PassToHost(OwnedPtr<Message> &aMessagePtr,
     }
 #endif
 
+#if OPENTHREAD_CONFIG_IP6_RESTRICT_FORWARDING_LARGER_SCOPE_MCAST_WITH_LOCAL_SRC
+    // Some platforms (e.g. Android) currently doesn't restrict link-local/mesh-local source
+    // addresses when forwarding multicast packets.
+    // For a multicast packet sent from link-local/mesh-local address to scope larger
+    // than realm-local, set the hop limit to 1 before sending to host, so this packet
+    // will not be forwarded by host.
+    if (aMessageInfo.GetSockAddr().IsMulticastLargerThanRealmLocal() &&
+        (aMessageInfo.GetPeerAddr().IsLinkLocal() || (Get<Mle::Mle>().IsMeshLocalAddress(aMessageInfo.GetPeerAddr()))))
+    {
+        messagePtr->Write<uint8_t>(Header::kHopLimitFieldOffset, 1);
+    }
+#endif
+
     // Pass message to callback transferring its ownership.
     mReceiveIp6DatagramCallback.Invoke(messagePtr.Release());
 
@@ -1121,7 +1134,8 @@ Error Ip6::HandleDatagram(OwnedPtr<Message> aMessagePtr, const void *aLinkMessag
         }
 #endif
 
-        forwardHost = header.GetDestination().IsMulticastLargerThanRealmLocal();
+        // Always forward multicast packets to host network stack
+        forwardHost = true;
 
         if ((aMessagePtr->IsOriginThreadNetif() || aMessagePtr->GetMulticastLoop()) &&
             Get<ThreadNetif>().IsMulticastSubscribed(header.GetDestination()))
@@ -1308,6 +1322,7 @@ const Address *Ip6::SelectSourceAddress(const Address &aDestination) const
 
     for (const Netif::UnicastAddress &addr : Get<ThreadNetif>().GetUnicastAddresses())
     {
+        bool    newAddrIsPreferred = false;
         uint8_t matchLen;
         uint8_t overrideScope;
 
@@ -1329,80 +1344,55 @@ const Address *Ip6::SelectSourceAddress(const Address &aDestination) const
             overrideScope = destScope;
         }
 
-        if (bestAddr == nullptr)
-        {
-            // Rule 0: Prefer any address
-            bestAddr     = &addr;
-            bestMatchLen = matchLen;
-        }
-        else if (addr.GetAddress() == aDestination)
+        if (addr.GetAddress() == aDestination)
         {
             // Rule 1: Prefer same address
             bestAddr = &addr;
             ExitNow();
         }
+
+        if (bestAddr == nullptr)
+        {
+            newAddrIsPreferred = true;
+        }
         else if (addr.GetScope() < bestAddr->GetScope())
         {
             // Rule 2: Prefer appropriate scope
-            if (addr.GetScope() >= overrideScope)
-            {
-                bestAddr     = &addr;
-                bestMatchLen = matchLen;
-            }
-            else
-            {
-                continue;
-            }
+            newAddrIsPreferred = (addr.GetScope() >= overrideScope);
         }
         else if (addr.GetScope() > bestAddr->GetScope())
         {
-            if (bestAddr->GetScope() < overrideScope)
-            {
-                bestAddr     = &addr;
-                bestMatchLen = matchLen;
-            }
-            else
-            {
-                continue;
-            }
+            newAddrIsPreferred = (bestAddr->GetScope() < overrideScope);
         }
         else if (addr.mPreferred != bestAddr->mPreferred)
         {
             // Rule 3: Avoid deprecated addresses
-
-            if (addr.mPreferred)
-            {
-                bestAddr     = &addr;
-                bestMatchLen = matchLen;
-            }
-            else
-            {
-                continue;
-            }
+            newAddrIsPreferred = addr.mPreferred;
         }
         else if (matchLen > bestMatchLen)
         {
             // Rule 6: Prefer matching label
             // Rule 7: Prefer public address
             // Rule 8: Use longest prefix matching
-            bestAddr     = &addr;
-            bestMatchLen = matchLen;
+
+            newAddrIsPreferred = true;
         }
         else if ((matchLen == bestMatchLen) && (destIsRloc == Get<Mle::Mle>().IsRoutingLocator(addr.GetAddress())))
         {
             // Additional rule: Prefer RLOC source for RLOC destination, EID source for anything else
-            bestAddr     = &addr;
-            bestMatchLen = matchLen;
-        }
-        else
-        {
-            continue;
+            newAddrIsPreferred = true;
         }
 
-        // infer destination scope based on prefix match
-        if (bestMatchLen >= bestAddr->mPrefixLength)
+        if (newAddrIsPreferred)
         {
-            destScope = bestAddr->GetScope();
+            bestAddr     = &addr;
+            bestMatchLen = matchLen;
+
+            // Infer destination scope based on prefix match
+            if (bestMatchLen >= bestAddr->mPrefixLength)
+            {
+                destScope = bestAddr->GetScope();
+            }
         }
     }
 
@@ -1456,7 +1446,9 @@ Error Ip6::RouteLookup(const Address &aSource, const Address &aDestination) cons
 #if OPENTHREAD_CONFIG_IP6_BR_COUNTERS_ENABLE
 void Ip6::UpdateBorderRoutingCounters(const Header &aHeader, uint16_t aMessageLength, bool aIsInbound)
 {
-    otPacketsAndBytes *counter = nullptr;
+    static constexpr uint8_t kPrefixLength   = 48;
+    otPacketsAndBytes       *counter         = nullptr;
+    otPacketsAndBytes       *internetCounter = nullptr;
 
     VerifyOrExit(!aHeader.GetSource().IsLinkLocal());
     VerifyOrExit(!aHeader.GetDestination().IsLinkLocal());
@@ -1466,7 +1458,10 @@ void Ip6::UpdateBorderRoutingCounters(const Header &aHeader, uint16_t aMessageLe
     if (aIsInbound)
     {
         VerifyOrExit(!Get<Netif>().HasUnicastAddress(aHeader.GetSource()));
-
+        if (!aHeader.GetSource().MatchesPrefix(aHeader.GetDestination().GetPrefix().m8, kPrefixLength))
+        {
+            internetCounter = &mBorderRoutingCounters.mInboundInternet;
+        }
         if (aHeader.GetDestination().IsMulticast())
         {
             VerifyOrExit(aHeader.GetDestination().IsMulticastLargerThanRealmLocal());
@@ -1480,7 +1475,10 @@ void Ip6::UpdateBorderRoutingCounters(const Header &aHeader, uint16_t aMessageLe
     else
     {
         VerifyOrExit(!Get<Netif>().HasUnicastAddress(aHeader.GetDestination()));
-
+        if (!aHeader.GetSource().MatchesPrefix(aHeader.GetDestination().GetPrefix().m8, kPrefixLength))
+        {
+            internetCounter = &mBorderRoutingCounters.mOutboundInternet;
+        }
         if (aHeader.GetDestination().IsMulticast())
         {
             VerifyOrExit(aHeader.GetDestination().IsMulticastLargerThanRealmLocal());
@@ -1498,6 +1496,11 @@ exit:
     {
         counter->mPackets += 1;
         counter->mBytes += aMessageLength;
+    }
+    if (internetCounter)
+    {
+        internetCounter->mPackets += 1;
+        internetCounter->mBytes += aMessageLength;
     }
 }
 #endif

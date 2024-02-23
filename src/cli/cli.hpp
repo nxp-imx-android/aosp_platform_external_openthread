@@ -69,8 +69,10 @@
 #include "cli/cli_mac_filter.hpp"
 #include "cli/cli_network_data.hpp"
 #include "cli/cli_output.hpp"
+#include "cli/cli_ping.hpp"
 #include "cli/cli_srp_client.hpp"
 #include "cli/cli_srp_server.hpp"
+#include "cli/cli_tcat.hpp"
 #include "cli/cli_tcp.hpp"
 #include "cli/cli_udp.hpp"
 #if OPENTHREAD_CONFIG_COAP_API_ENABLE
@@ -116,6 +118,7 @@ class Interpreter : public OutputImplementer, public Output
     friend class Joiner;
     friend class LinkMetrics;
     friend class NetworkData;
+    friend class PingSender;
     friend class SrpClient;
     friend class SrpServer;
 #endif
@@ -255,14 +258,14 @@ public:
      * If the argument string is an IPv4 address, this method will try to synthesize an IPv6 address using preferred
      * NAT64 prefix in the network data.
      *
-     * @param[in]  aInstance       A pointer to openthread instance.
+     * @param[in]  aInstance       A pointer to OpenThread instance.
      * @param[in]  aArg            The argument string to parse.
      * @param[out] aAddress        A reference to an `otIp6Address` to output the parsed IPv6 address.
      * @param[out] aSynthesized    Whether @p aAddress is synthesized from an IPv4 address.
      *
-     * @retval OT_ERROR_NONE          The argument was parsed successfully.
-     * @retval OT_ERROR_INVALID_ARGS  The argument is empty or does not contain valid IP address.
-     * @retval OT_ERROR_INVALID_STATE No valid NAT64 prefix in the network data.
+     * @retval OT_ERROR_NONE           The argument was parsed successfully.
+     * @retval OT_ERROR_INVALID_ARGS   The argument is empty or does not contain a valid IP address.
+     * @retval OT_ERROR_INVALID_STATE  No valid NAT64 prefix in the network data.
      *
      */
     static otError ParseToIp6Address(otInstance   *aInstance,
@@ -274,14 +277,10 @@ protected:
     static Interpreter *sInterpreter;
 
 private:
-    enum
-    {
-        kIndentSize            = 4,
-        kMaxArgs               = 32,
-        kMaxAutoAddresses      = 8,
-        kMaxLineLength         = OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH,
-        kMaxUserCommandEntries = OPENTHREAD_CONFIG_CLI_MAX_USER_CMD_ENTRIES,
-    };
+    static constexpr uint8_t  kIndentSize            = 4;
+    static constexpr uint16_t kMaxArgs               = 32;
+    static constexpr uint16_t kMaxLineLength         = OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH;
+    static constexpr uint16_t kMaxUserCommandEntries = OPENTHREAD_CONFIG_CLI_MAX_USER_CMD_ENTRIES;
 
     static constexpr uint32_t kNetworkDiagnosticTimeoutMsecs = 5000;
     static constexpr uint32_t kLocateTimeoutMsecs            = 2500;
@@ -381,9 +380,6 @@ private:
     void OutputPrompt(void);
     void OutputResult(otError aError);
 
-#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
-    otError ParsePingInterval(const Arg &aArg, uint32_t &aInterval);
-#endif
     static otError ParseJoinerDiscerner(Arg &aArg, otJoinerDiscerner &aDiscerner);
 #if OPENTHREAD_CONFIG_BORDER_ROUTER_ENABLE
     static otError ParsePrefix(Arg aArgs[], otBorderRouterConfig &aConfig);
@@ -457,10 +453,6 @@ private:
     void OutputMultiRadioInfo(const otMultiRadioNeighborInfo &aMultiRadioInfo);
 #endif
 
-#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
-    static void HandlePingReply(const otPingSenderReply *aReply, void *aContext);
-    static void HandlePingStatistics(const otPingSenderStatistics *aStatistics, void *aContext);
-#endif
     static void HandleActiveScanResult(otActiveScanResult *aResult, void *aContext);
     static void HandleEnergyScanResult(otEnergyScanResult *aResult, void *aContext);
     static void HandleLinkPcapReceive(const otRadioFrame *aFrame, bool aIsTx, void *aContext);
@@ -482,6 +474,9 @@ private:
     void OutputChildTableEntry(uint8_t aIndentSize, const otNetworkDiagChildEntry &aChildEntry);
 #endif
 
+#if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
+    void OutputTrelCounters(const otTrelCounters &aCounters);
+#endif
 #if OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE
     void OutputNat64Counters(const otNat64Counters &aCounters);
 #endif
@@ -493,10 +488,6 @@ private:
     static void HandleSntpResponse(void *aContext, uint64_t aTime, otError aResult);
 #endif
 
-#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
-    void HandlePingReply(const otPingSenderReply *aReply);
-    void HandlePingStatistics(const otPingSenderStatistics *aStatistics);
-#endif
     void HandleActiveScanResult(otActiveScanResult *aResult);
     void HandleEnergyScanResult(otEnergyScanResult *aResult);
     void HandleLinkPcapReceive(const otRadioFrame *aFrame, bool aIsTx);
@@ -532,6 +523,7 @@ private:
 
     UserCommandsEntry mUserCommands[kMaxUserCommandEntries];
     bool              mCommandIsPending;
+    bool              mInternalDebugCommand;
 
     TimerMilliContext mTimer;
 
@@ -594,11 +586,14 @@ private:
 #if OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE
     LinkMetrics mLinkMetrics;
 #endif
+#if OPENTHREAD_CONFIG_BLE_TCAT_ENABLE && OPENTHREAD_CONFIG_CLI_BLE_SECURE_ENABLE
+    Tcat mTcat;
+#endif
+#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
+    PingSender mPing;
+#endif
 #endif // OPENTHREAD_FTD || OPENTHREAD_MTD
 
-#if OPENTHREAD_CONFIG_PING_SENDER_ENABLE
-    bool mPingIsAsync : 1;
-#endif
 #if OPENTHREAD_CONFIG_TMF_ANYCAST_LOCATOR_ENABLE
     bool mLocateInProgress : 1;
 #endif

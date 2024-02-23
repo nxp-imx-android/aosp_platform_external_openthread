@@ -193,18 +193,18 @@ using namespace ot::Posix::Ip6Utils;
 
 #endif // OPENTHREAD_TUN_DEVICE
 
-#if defined(__linux__)
+#ifdef __linux__
 static uint32_t sNetlinkSequence = 0; ///< Netlink message sequence.
 #endif
 
-#if OPENTHREAD_POSIX_CONFIG_INSTALL_OMR_ROUTES_ENABLE && __linux__
+#if OPENTHREAD_POSIX_CONFIG_INSTALL_OMR_ROUTES_ENABLE && defined(__linux__)
 static constexpr uint32_t kOmrRoutesPriority = OPENTHREAD_POSIX_CONFIG_OMR_ROUTES_PRIORITY;
 static constexpr uint8_t  kMaxOmrRoutesNum   = OPENTHREAD_POSIX_CONFIG_MAX_OMR_ROUTES_NUM;
 static uint8_t            sAddedOmrRoutesNum = 0;
 static otIp6Prefix        sAddedOmrRoutes[kMaxOmrRoutesNum];
 #endif
 
-#if OPENTHREAD_POSIX_CONFIG_INSTALL_EXTERNAL_ROUTES_ENABLE && __linux__
+#if OPENTHREAD_POSIX_CONFIG_INSTALL_EXTERNAL_ROUTES_ENABLE && defined(__linux__)
 static constexpr uint32_t kExternalRoutePriority  = OPENTHREAD_POSIX_CONFIG_EXTERNAL_ROUTE_PRIORITY;
 static constexpr uint8_t  kMaxExternalRoutesNum   = OPENTHREAD_POSIX_CONFIG_MAX_EXTERNAL_ROUTE_NUM;
 static uint8_t            sAddedExternalRoutesNum = 0;
@@ -319,7 +319,7 @@ static uint8_t NetmaskToPrefixLength(const struct sockaddr_in6 *netmask)
 }
 #endif
 
-#if defined(__linux__)
+#ifdef __linux__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-align"
 
@@ -375,7 +375,7 @@ static void UpdateUnicastLinux(otInstance *aInstance, const otIp6AddressInfo &aA
     memset(&req, 0, sizeof(req));
 
     req.nh.nlmsg_len   = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
-    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (aIsAdded ? (NLM_F_CREATE | NLM_F_EXCL) : 0);
     req.nh.nlmsg_type  = aIsAdded ? RTM_NEWADDR : RTM_DELADDR;
     req.nh.nlmsg_pid   = 0;
     req.nh.nlmsg_seq   = ++sNetlinkSequence;
@@ -388,7 +388,7 @@ static void UpdateUnicastLinux(otInstance *aInstance, const otIp6AddressInfo &aA
 
     AddRtAttr(&req.nh, sizeof(req), IFA_LOCAL, aAddressInfo.mAddress, sizeof(*aAddressInfo.mAddress));
 
-    if (!aAddressInfo.mPreferred)
+    if (!aAddressInfo.mPreferred || aAddressInfo.mMeshLocal)
     {
         struct ifa_cacheinfo cacheinfo;
 
@@ -432,7 +432,7 @@ static void UpdateUnicastLinux(otInstance *aInstance, const otIp6AddressInfo &aA
 }
 
 #pragma GCC diagnostic pop
-#endif // defined(__linux__)
+#endif // __linux__
 
 static void UpdateUnicast(otInstance *aInstance, const otIp6AddressInfo &aAddressInfo, bool aIsAdded)
 {
@@ -441,7 +441,7 @@ static void UpdateUnicast(otInstance *aInstance, const otIp6AddressInfo &aAddres
     assert(gInstance == aInstance);
     assert(sIpFd >= 0);
 
-#if defined(__linux__)
+#ifdef __linux__
     UpdateUnicastLinux(aInstance, aAddressInfo, aIsAdded);
 #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__)
     {
@@ -456,12 +456,13 @@ static void UpdateUnicast(otInstance *aInstance, const otIp6AddressInfo &aAddres
         ifr6.ifra_prefixmask.sin6_family = AF_INET6;
         ifr6.ifra_prefixmask.sin6_len    = sizeof(ifr6.ifra_prefixmask);
         InitNetaskWithPrefixLength(&ifr6.ifra_prefixmask.sin6_addr, aAddressInfo.mPrefixLength);
-        ifr6.ifra_lifetime.ia6t_vltime    = ND6_INFINITE_LIFETIME;
-        ifr6.ifra_lifetime.ia6t_pltime    = ND6_INFINITE_LIFETIME;
+        ifr6.ifra_lifetime.ia6t_vltime = ND6_INFINITE_LIFETIME;
+        ifr6.ifra_lifetime.ia6t_pltime = ND6_INFINITE_LIFETIME;
 
 #if defined(__APPLE__)
-        ifr6.ifra_lifetime.ia6t_expire    = ND6_INFINITE_LIFETIME;
-        ifr6.ifra_lifetime.ia6t_preferred = (aAddressInfo.mPreferred ? ND6_INFINITE_LIFETIME : 0);
+        ifr6.ifra_lifetime.ia6t_expire = ND6_INFINITE_LIFETIME;
+        ifr6.ifra_lifetime.ia6t_preferred =
+            (aAddressInfo.mPreferred && !aAddressInfo.mMeshLocal ? ND6_INFINITE_LIFETIME : 0);
 #endif
 
         rval = ioctl(sIpFd, aIsAdded ? SIOCAIFADDR_IN6 : SIOCDIFADDR_IN6, &ifr6);
@@ -569,7 +570,7 @@ static void UpdateLink(otInstance *aInstance)
     SetLinkState(aInstance, otIp6IsEnabled(aInstance));
 }
 
-#if defined(__linux__)
+#ifdef __linux__
 template <size_t N> otError AddRoute(const uint8_t (&aAddress)[N], uint8_t aPrefixLen, uint32_t aPriority)
 {
     constexpr unsigned int kBufSize = 128;
@@ -867,7 +868,7 @@ static otError DeleteIp4Route(const otIp4Cidr &aIp4Cidr)
     return DeleteRoute(aIp4Cidr.mAddress.mFields.m8, aIp4Cidr.mLength);
 }
 #endif
-#endif // defined(__linux__)
+#endif // __linux__
 
 static void processAddressChange(const otIp6AddressInfo *aAddressInfo, bool aIsAdded, void *aContext)
 {
@@ -952,10 +953,10 @@ void platformNetifStateChange(otInstance *aInstance, otChangedFlags aFlags)
     }
     if (OT_CHANGED_THREAD_NETDATA & aFlags)
     {
-#if OPENTHREAD_POSIX_CONFIG_INSTALL_OMR_ROUTES_ENABLE && __linux__
+#if OPENTHREAD_POSIX_CONFIG_INSTALL_OMR_ROUTES_ENABLE && defined(__linux__)
         UpdateOmrRoutes(aInstance);
 #endif
-#if OPENTHREAD_POSIX_CONFIG_INSTALL_EXTERNAL_ROUTES_ENABLE && __linux__
+#if OPENTHREAD_POSIX_CONFIG_INSTALL_EXTERNAL_ROUTES_ENABLE && defined(__linux__)
         UpdateExternalRoutes(aInstance);
 #endif
 #if OPENTHREAD_POSIX_CONFIG_FIREWALL_ENABLE
@@ -1080,6 +1081,46 @@ exit:
 }
 #endif // OPENTHREAD_CONFIG_BORDER_ROUTING_DHCP6_PD_ENABLE
 
+#ifdef __linux__
+/**
+ * Returns whether the address is a required anycast address (RFC2373, 2.6.1).
+ *
+ */
+static bool isRequiredAnycast(const uint8_t *aAddress, uint8_t aPrefixLength)
+{
+    bool    isRequiredAnycast = false;
+    uint8_t firstBytePos      = aPrefixLength / 8;
+    uint8_t remainingBits     = aPrefixLength % 8;
+
+    if (aPrefixLength == OT_IP6_ADDRESS_BITSIZE)
+    {
+        ExitNow();
+    }
+
+    if (remainingBits != 0)
+    {
+        if ((aAddress[firstBytePos] & ((1 << remainingBits) - 1)) != 0)
+        {
+            ExitNow();
+        }
+        firstBytePos++;
+    }
+
+    for (int i = firstBytePos; i < OT_IP6_ADDRESS_SIZE; ++i)
+    {
+        if (aAddress[i] != 0)
+        {
+            ExitNow();
+        }
+    }
+
+    isRequiredAnycast = true;
+
+exit:
+    return isRequiredAnycast;
+}
+#endif // __linux__
+
 static void processTransmit(otInstance *aInstance)
 {
     otMessage *message = nullptr;
@@ -1124,7 +1165,6 @@ static void processTransmit(otInstance *aInstance)
         message = otIp6NewMessage(aInstance, &settings);
 #endif
         VerifyOrExit(message != nullptr, error = OT_ERROR_NO_BUFS);
-        otMessageSetLoopbackToHostAllowed(message, true);
         otMessageSetOrigin(message, OT_MESSAGE_ORIGIN_HOST_UNTRUSTED);
     }
 
@@ -1182,7 +1222,7 @@ static void logAddrEvent(bool isAdd, const ot::Ip6::Address &aAddress, otError e
     }
 }
 
-#if defined(__linux__)
+#ifdef __linux__
 
 static void processNetifAddrEvent(otInstance *aInstance, struct nlmsghdr *aNetlinkMessage)
 {
@@ -1212,6 +1252,15 @@ static void processNetifAddrEvent(otInstance *aInstance, struct nlmsghdr *aNetli
             memset(&addr6, 0, sizeof(addr6));
             addr6.sin6_family = AF_INET6;
             memcpy(&addr6.sin6_addr, RTA_DATA(rta), sizeof(addr6.sin6_addr));
+
+            // Linux allows adding an IPv6 required anycast address to an interface,
+            // which blocks openthread deriving an address by SLAAC and will cause routing issues.
+            // Ignore the required anycast addresses here to allow OpenThread stack generate one when necessary,
+            // and Linux will prefer the non-required anycast address on the interface.
+            if (isRequiredAnycast(addr.GetBytes(), ifaddr->ifa_prefixlen))
+            {
+                continue;
+            }
 
             if (aNetlinkMessage->nlmsg_type == RTM_NEWADDR)
             {
@@ -1308,7 +1357,7 @@ static void processNetifLinkEvent(otInstance *aInstance, struct nlmsghdr *aNetli
     }
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE && OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE
-    if (isUp && sActiveNat64Cidr.mLength > 0)
+    if (isUp && otNat64GetTranslatorState(gInstance) == OT_NAT64_STATE_ACTIVE)
     {
         // Recover NAT64 route.
         if ((error = AddIp4Route(sActiveNat64Cidr, kNat64RoutePriority)) != OT_ERROR_NONE)
@@ -1324,7 +1373,7 @@ exit:
         otLogWarnPlat("[netif] Failed to sync netif state with host: %s", otThreadErrorToString(error));
     }
 }
-#endif // defined(__linux__)
+#endif // __linux__
 
 #if defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__)
 
@@ -1558,7 +1607,7 @@ exit:
 
 #endif
 
-#if defined(__linux__)
+#ifdef __linux__
 
 #define ERR_RTA(errmsg, requestPayloadLength) \
     ((struct rtattr *)((char *)(errmsg)) + NLMSG_ALIGN(sizeof(struct nlmsgerr)) + NLMSG_ALIGN(requestPayloadLength))
@@ -1632,7 +1681,7 @@ exit:
     return;
 }
 
-#endif // defined(__linux__)
+#endif // __linux__
 
 static void processNetlinkEvent(otInstance *aInstance)
 {
@@ -1641,7 +1690,7 @@ static void processNetlinkEvent(otInstance *aInstance)
 
     union
     {
-#if defined(__linux__)
+#ifdef __linux__
         nlmsghdr nlMsg;
 #else
         rt_msghdr rtMsg;
@@ -1651,7 +1700,7 @@ static void processNetlinkEvent(otInstance *aInstance)
 
     length = recv(sNetlinkFd, msgBuffer.buffer, sizeof(msgBuffer.buffer), 0);
 
-#if defined(__linux__)
+#ifdef __linux__
 #define HEADER_SIZE sizeof(nlmsghdr)
 #else
 #define HEADER_SIZE sizeof(rt_msghdr)
@@ -1664,7 +1713,7 @@ static void processNetlinkEvent(otInstance *aInstance)
         ExitNow();
     }
 
-#if defined(__linux__)
+#ifdef __linux__
     for (struct nlmsghdr *msg = &msgBuffer.nlMsg; NLMSG_OK(msg, static_cast<size_t>(length));
          msg                  = NLMSG_NEXT(msg, length))
     {
@@ -1680,7 +1729,7 @@ static void processNetlinkEvent(otInstance *aInstance)
 #endif
         switch (msg->nlmsg_type)
         {
-#if defined(__linux__)
+#ifdef __linux__
         case NLMSG_DONE:
             // NLMSG_DONE indicates the end of the netlink message, exits now
             ExitNow();
@@ -1705,7 +1754,7 @@ static void processNetlinkEvent(otInstance *aInstance)
             break;
 #endif
 
-#if !defined(__linux__)
+#ifndef __linux__
         case RTM_IFINFO:
             processNetifInfoEvent(aInstance, msg);
             break;
@@ -1742,7 +1791,7 @@ static void mldListenerInit(void)
     memcpy(&mreq6.ipv6mr_multiaddr, kMLDv2MulticastAddress.mFields.m8, sizeof(kMLDv2MulticastAddress.mFields.m8));
 
     VerifyOrDie(setsockopt(sMLDMonitorFd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6)) == 0, OT_EXIT_FAILURE);
-#if defined(__linux__)
+#ifdef __linux__
     VerifyOrDie(setsockopt(sMLDMonitorFd, SOL_SOCKET, SO_BINDTODEVICE, gNetifName,
                            static_cast<socklen_t>(strnlen(gNetifName, IFNAMSIZ))) == 0,
                 OT_EXIT_FAILURE);
@@ -1827,7 +1876,7 @@ exit:
 }
 #endif
 
-#if defined(__linux__)
+#ifdef __linux__
 static void SetAddrGenModeToNone(void)
 {
     struct
@@ -2004,7 +2053,7 @@ static void platformConfigureTunDevice(otPlatformConfig *aPlatformConfig)
 
 static void platformConfigureNetLink(void)
 {
-#if defined(__linux__)
+#ifdef __linux__
     sNetlinkFd = SocketWithCloseExec(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE, kSocketNonBlock);
 #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__FreeBSD__)
     sNetlinkFd = SocketWithCloseExec(PF_ROUTE, SOCK_RAW, 0, kSocketNonBlock);
@@ -2032,7 +2081,7 @@ static void platformConfigureNetLink(void)
     }
 #endif
 
-#if defined(__linux__)
+#ifdef __linux__
     {
         struct sockaddr_nl sa;
 
@@ -2084,7 +2133,7 @@ void platformNetifInit(otPlatformConfig *aPlatformConfig)
     mldListenerInit();
 #endif
 
-#if __linux__
+#ifdef __linux__
     SetAddrGenModeToNone();
 #endif
 }
