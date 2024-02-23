@@ -36,6 +36,16 @@
 #define CONFIG_BORDER_AGENT_H_
 
 /**
+ * @addtogroup config-border-agent
+ *
+ * @brief
+ *   This module includes configuration variables for Border Agent.
+ *
+ * @{
+ *
+ */
+
+/**
  * @def OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
  *
  * Define to 1 to enable Border Agent support.
@@ -62,7 +72,12 @@
  *
  */
 #ifndef OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
-#define OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE 0
+#define OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE 1
 #endif
+
+/**
+ * @}
+ *
+ */
 
 #endif // CONFIG_BORDER_AGENT_H_
