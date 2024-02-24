@@ -1262,7 +1262,7 @@ class NodeImpl:
         self._expect_done()
 
     def srp_client_disable_auto_start_mode(self):
-        self.send_command(f'srp client autostart able')
+        self.send_command(f'srp client autostart disable')
         self._expect_done()
 
     def srp_client_get_server_address(self):
@@ -1389,6 +1389,30 @@ class NodeImpl:
                 return None
 
             raise
+
+    def get_trel_counters(self):
+        cmd = 'trel counters'
+        self.send_command(cmd)
+        result = self._expect_command_output()
+
+        counters = {}
+        for line in result:
+            m = re.match(r'(\w+)\:[^\d]+(\d+)[^\d]+(\d+)(?:[^\d]+(\d+))?', line)
+            if m:
+                groups = m.groups()
+                sub_counters = {
+                    'packets': int(groups[1]),
+                    'bytes': int(groups[2]),
+                }
+                if groups[3]:
+                    sub_counters['failures'] = int(groups[3])
+                counters[groups[0]] = sub_counters
+        return counters
+
+    def reset_trel_counters(self):
+        cmd = 'trel counters reset'
+        self.send_command(cmd)
+        self._expect_done()
 
     def _encode_txt_entry(self, entry):
         """Encodes the TXT entry to the DNS-SD TXT record format as a HEX string.
@@ -2177,13 +2201,21 @@ class NodeImpl:
         self.send_command(cmd)
         return self._expect_command_output()[0]
 
-    def get_netdata_non_nat64_prefixes(self):
-        prefixes = []
+    def get_netdata_non_nat64_routes(self):
+        nat64_routes = []
         routes = self.get_routes()
         for route in routes:
             if 'n' not in route.split(' ')[1]:
-                prefixes.append(route.split(' ')[0])
-        return prefixes
+                nat64_routes.append(route.split(' ')[0])
+        return nat64_routes
+
+    def get_netdata_nat64_routes(self):
+        nat64_routes = []
+        routes = self.get_routes()
+        for route in routes:
+            if 'n' in route.split(' ')[1]:
+                nat64_routes.append(route.split(' ')[0])
+        return nat64_routes
 
     def get_br_nat64_prefix(self):
         cmd = 'br nat64prefix local'
@@ -2301,14 +2333,6 @@ class NodeImpl:
                 }
                 continue
         return {'protocol': protocol_counters, 'errors': error_counters}
-
-    def get_netdata_nat64_prefix(self):
-        prefixes = []
-        routes = self.get_routes()
-        for route in routes:
-            if 'n' in route.split(' ')[1]:
-                prefixes.append(route.split(' ')[0])
-        return prefixes
 
     def get_prefixes(self):
         return self.get_netdata()['Prefixes']

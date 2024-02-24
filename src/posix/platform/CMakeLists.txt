@@ -125,6 +125,7 @@ endif()
 add_library(openthread-posix
     alarm.cpp
     backtrace.cpp
+    ble.cpp
     configuration.cpp
     config_file.cpp
     daemon.cpp
@@ -184,6 +185,7 @@ target_compile_definitions(openthread-posix
     PRIVATE
         OPENTHREAD_FTD=1
         OPENTHREAD_MTD=0
+        OPENTHREAD_RADIO=0
 )
 
 target_compile_options(openthread-posix PRIVATE
@@ -195,6 +197,7 @@ target_include_directories(openthread-posix PRIVATE
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/src/core
     ${PROJECT_SOURCE_DIR}/third_party/mbedtls/repo/include
+    ${OT_SPINEL_VENDOR_HOOK_SOURCE_DIR}
     PUBLIC
         ${PROJECT_SOURCE_DIR}/src/posix/platform/include
 )

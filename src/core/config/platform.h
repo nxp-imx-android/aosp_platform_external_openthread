@@ -35,6 +35,18 @@
 #ifndef CONFIG_PLATFORM_H_
 #define CONFIG_PLATFORM_H_
 
+#include "config/srp_server.h"
+
+/**
+ * @addtogroup config-platform
+ *
+ * @brief
+ *   This module includes configuration variables for platform-specific services.
+ *
+ * @{
+ *
+ */
+
 /**
  * @def OPENTHREAD_CONFIG_PLATFORM_INFO
  *
@@ -95,6 +107,16 @@
  */
 #ifndef OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE
 #define OPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE 0
+#endif
+
+/**
+ * @def OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
+ *
+ * Define as 1 to enable DNSSD (mDNS) platform module.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
+#define OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE OPENTHREAD_CONFIG_SRP_SERVER_ADVERTISING_PROXY_ENABLE
 #endif
 
 /**
@@ -185,5 +207,10 @@
 #error "Maximum Proprietary Channel Page value currently supported is 31."
 #endif
 #endif
+
+/**
+ * @}
+ *
+ */
 
 #endif // CONFIG_PLATFORM_H_

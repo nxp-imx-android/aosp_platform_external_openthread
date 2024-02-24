@@ -1065,6 +1065,44 @@ public:
      */
     void RestoreProperties(void);
 #endif
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+    /**
+     * Defines a vendor "set property handler" hook to process vendor spinel properties.
+     *
+     * The vendor handler should return `OT_ERROR_NOT_FOUND` status if it does not support "set" operation for the
+     * given property key. Otherwise, the vendor handler should behave like other property set handlers, i.e., it
+     * should first decode the value from the input spinel frame and then perform the corresponding set operation. The
+     * handler should not prepare the spinel response and therefore should not write anything to the NCP buffer. The
+     * `otError` returned from handler (other than `OT_ERROR_NOT_FOUND`) indicates the error in either parsing of the
+     * input or the error of the set operation. In case of a successful "set", `NcpBase` set command handler will call
+     * the `VendorGetPropertyHandler()` for the same property key to prepare the response.
+     *
+     * @param[in] aPropKey  The spinel property key.
+     *
+     * @returns OT_ERROR_NOT_FOUND if it does not support the given property key, otherwise the error in either parsing
+     *          of the input or the "set" operation.
+     *
+     */
+    otError VendorHandleValueIs(spinel_prop_key_t aPropKey);
+
+    /**
+     *  A callback type for restoring vendor properties.
+     *
+     */
+    typedef void (*otRadioSpinelVendorRestorePropertiesCallback)(void *context);
+
+    /**
+     * Registers a callback to restore vendor properties.
+     *
+     * This function is used to register a callback for vendor properties recovery. When an event which needs to restore
+     * properties occurs (such as an unexpected RCP reset), the user can restore the vendor properties via the callback.
+     *
+     * @param[in] aCallback The callback.
+     * @param[in] aContext  The context.
+     *
+     */
+    void SetVendorRestorePropertiesCallback(otRadioSpinelVendorRestorePropertiesCallback aCallback, void *aContext);
+#endif
 
 private:
     enum
@@ -1085,9 +1123,12 @@ private:
         kStateTransmitDone, ///< Radio indicated frame transmission is done.
     };
 
-    static constexpr uint32_t kUsPerMs = 1000; ///< Microseconds per millisecond.
+    static constexpr uint32_t kUsPerMs  = 1000;                 ///< Microseconds per millisecond.
+    static constexpr uint32_t kMsPerSec = 1000;                 ///< Milliseconds per second.
+    static constexpr uint32_t kUsPerSec = kUsPerMs * kMsPerSec; ///< Microseconds per second.
     static constexpr uint64_t kTxWaitUs =
-        5000000; ///< Maximum time of waiting for `TransmitDone` event, in microseconds.
+        OPENTHREAD_SPINEL_CONFIG_RCP_TX_WAIT_TIME_SECS *
+        kUsPerSec; ///< Maximum time of waiting for `TransmitDone` event, in microseconds.
 
     typedef otError (RadioSpinel::*ResponseHandler)(const uint8_t *aBuffer, uint16_t aLength);
 
@@ -1308,6 +1349,11 @@ private:
     MaxPowerTable mMaxPowerTable;
 
     otRadioSpinelMetrics mRadioSpinelMetrics;
+
+#if OPENTHREAD_SPINEL_CONFIG_VENDOR_HOOK_ENABLE
+    otRadioSpinelVendorRestorePropertiesCallback mVendorRestorePropertiesCallback;
+    void                                        *mVendorRestorePropertiesContext;
+#endif
 };
 
 } // namespace Spinel
