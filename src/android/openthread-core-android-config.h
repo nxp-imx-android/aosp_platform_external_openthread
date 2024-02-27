@@ -304,4 +304,7 @@
 // Enables diag commands for RF testing
 #define OPENTHREAD_CONFIG_DIAG_ENABLE 1
 
+// Enable restriction on local source to larger scope multicast forwarding
+#define OPENTHREAD_CONFIG_IP6_RESTRICT_FORWARDING_LARGER_SCOPE_MCAST_WITH_LOCAL_SRC 1
+
 #endif // OPENTHREAD_CORE_ANDROID_CONFIG_H_
