@@ -307,4 +307,7 @@
 // Enable restriction on local source to larger scope multicast forwarding
 #define OPENTHREAD_CONFIG_IP6_RESTRICT_FORWARDING_LARGER_SCOPE_MCAST_WITH_LOCAL_SRC 1
 
+// Set the max log size to 512 to allow the RCP to upload longer log.
+#define OPENTHREAD_CONFIG_LOG_MAX_SIZE 512
+
 #endif // OPENTHREAD_CORE_ANDROID_CONFIG_H_
