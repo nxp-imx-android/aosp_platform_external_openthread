@@ -310,4 +310,10 @@
 // Set the max log size to 512 to allow the RCP to upload longer log.
 #define OPENTHREAD_CONFIG_LOG_MAX_SIZE 512
 
+// Enable Link Metrics subject feature for Thread certification test.
+#define OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE 1
+
+// Enable Link Metrics initiator feature for Thread certification test.
+#define OPENTHREAD_CONFIG_MLE_LINK_METRICS_INITIATOR_ENABLE 1
+
 #endif // OPENTHREAD_CORE_ANDROID_CONFIG_H_
