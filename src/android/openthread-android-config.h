@@ -84,3 +84,24 @@
  * This flag is needed by the framework API `setChannelTargetPower()` to set the target power of each channel.
  */
 #define OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE 1
+
+// Enable the configuration file support for power calibration.
+#define OPENTHREAD_POSIX_CONFIG_CONFIGURATION_FILE_ENABLE 1
+
+// Disable the max power table support, this feature is supported by
+// OPENTHREAD_POSIX_CONFIG_CONFIGURATION_FILE_ENABLE and
+// OPENTHREAD_CONFIG_PLATFORM_POWER_CALIBRATION_ENABLE.
+#define OPENTHREAD_POSIX_CONFIG_MAX_POWER_TABLE_ENABLE 0
+
+// Enable the spinel vendor interface to adopt the HAL-based RCP.
+#define OPENTHREAD_POSIX_CONFIG_SPINEL_VENDOR_INTERFACE_ENABLE 1
+
+// Using packet filtering in OT core instead of the iptables-based firewall feature.
+#define OPENTHREAD_POSIX_CONFIG_FIREWALL_ENABLE 0
+
+// Disable the feature to add external routes to POSIX kernel when external routes are changed in
+// netdata.
+#define OPENTHREAD_POSIX_CONFIG_INSTALL_EXTERNAL_ROUTES_ENABLE 0
+
+// Disable backtrace support as Android already has support for dumping backtrace after crash.
+#define OPENTHREAD_POSIX_CONFIG_BACKTRACE_ENABLE 0

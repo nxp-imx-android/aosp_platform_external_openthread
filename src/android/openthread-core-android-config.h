@@ -29,6 +29,8 @@
 #ifndef OPENTHREAD_CORE_ANDROID_CONFIG_H_
 #define OPENTHREAD_CORE_ANDROID_CONFIG_H_
 
+#include <assert.h>
+
 /**
  * @def OPENTHREAD_CONFIG_PLATFORM_INFO
  *
@@ -62,16 +64,6 @@
 #define OPENTHREAD_POSIX_CONFIG_RCP_PTY_ENABLE 1
 
 /**
- * @def OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
- *
- * The number of message buffers in the buffer pool.
- *
- * NOTE: Router devices that support 32 children will have 260 message buffers minimum.
- *       This allows for one 1KB frame per child with a little overhead.
- */
-#define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS 280
-
-/**
  * @def OPENTHREAD_CONFIG_MAC_DEFAULT_MAX_FRAME_RETRIES_DIRECT
  *
  * The maximum number of retries allowed after a transmission failure for direct transmissions.
@@ -102,14 +94,6 @@
 #define OPENTHREAD_CONFIG_MAC_MAX_TX_ATTEMPTS_INDIRECT_POLLS 16
 
 /**
- * @def OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES
- *
- * The number of EID-to-RLOC cache entries.
- *
- */
-#define OPENTHREAD_CONFIG_TMF_ADDRESS_CACHE_ENTRIES 32
-
-/**
  * @def OPENTHREAD_CONFIG_TMF_ADDRESS_QUERY_MAX_RETRY_DELAY
  *
  * Maximum retry delay for address query (in seconds).
@@ -125,7 +109,20 @@
  * The maximum number of children.
  *
  */
-#define OPENTHREAD_CONFIG_MLE_MAX_CHILDREN 64
+#define OPENTHREAD_CONFIG_MLE_MAX_CHILDREN 128
+
+/**
+ * @def OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS
+ *
+ * The number of message buffers in the buffer pool.
+ *
+ * NOTE: This allows for one 1KB frame per child.
+ */
+#define OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS (OPENTHREAD_CONFIG_MLE_MAX_CHILDREN * (32 / sizeof(void *)))
+
+static_assert(OPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS * (32 * sizeof(void *)) ==
+                  OPENTHREAD_CONFIG_MLE_MAX_CHILDREN * 1024,
+              "Message buffer should be 1KB per child");
 
 /**
  * @def OPENTHREAD_CONFIG_MLE_IP_ADDRS_PER_CHILD
@@ -213,7 +210,10 @@
  * is set, this defines the most verbose log level possible.
  *
  */
-#define OPENTHREAD_CONFIG_LOG_LEVEL OT_LOG_LEVEL_INFO
+#define OPENTHREAD_CONFIG_LOG_LEVEL OT_LOG_LEVEL_DEBG
+
+// The initial log level used when OpenThread is initialized.
+#define OPENTHREAD_CONFIG_LOG_LEVEL_INIT OT_LOG_LEVEL_INFO
 
 /**
  * @def OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
@@ -307,8 +307,54 @@
 // Enable restriction on local source to larger scope multicast forwarding
 #define OPENTHREAD_CONFIG_IP6_RESTRICT_FORWARDING_LARGER_SCOPE_MCAST_WITH_LOCAL_SRC 1
 
-// Set the max log size to 512 to allow the RCP to upload longer log.
-#define OPENTHREAD_CONFIG_LOG_MAX_SIZE 512
+// Set the max log size to 1024 to allow the RCP to upload longer log.
+#define OPENTHREAD_CONFIG_LOG_MAX_SIZE 1024
+
+// Disable as Android device will not work as commissioner.
+#define OPENTHREAD_CONFIG_COMMISSIONER_ENABLE 0
+
+// Vendor extension module is not used on Android.
+#define OPENTHREAD_ENABLE_VENDOR_EXTENSION 0
+
+// Allow longer input string of 1300 bytes for CLI commands.
+#define OPENTHREAD_CONFIG_CLI_MAX_LINE_LENGTH 1300
+
+// Power calibration on RCP is not needed.
+#define OPENTHREAD_CONFIG_POWER_CALIBRATION_ENABLE 0
+
+// Enable aborting the host when receiving unexpected reset from RCP.
+#define OPENTHREAD_SPINEL_CONFIG_ABORT_ON_UNEXPECTED_RCP_RESET_ENABLE 1
+
+// Disable the support for locally initializing an Active Operational Dataset.
+#define OPENTHREAD_CONFIG_OPERATIONAL_DATASET_AUTO_INIT 0
+
+// Disable TCAT over BLE support.
+#define OPENTHREAD_CONFIG_BLE_TCAT_ENABLE 0
+
+// Disable BLE secure support.
+#define OPENTHREAD_CONFIG_CLI_BLE_SECURE_ENABLE 0
+
+// Set the interval (in units of microseconds) for host-rcp time sync to 10 seconds.
+#define OPENTHREAD_SPINEL_CONFIG_RCP_TIME_SYNC_INTERVAL (10 * 1000 * 1000)
+
+// Enable tracking the uptime of OpenThread instance.
+#define OPENTHREAD_CONFIG_UPTIME_ENABLE 1
+
+// The Thread version is 1.3
+#define OPENTHREAD_CONFIG_THREAD_VERSION OT_THREAD_VERSION_1_3
+
+// Thread 1.2 Domain Unicast Address feature is not supported.
+#define OPENTHREAD_CONFIG_DUA_ENABLE 0
+#define OPENTHREAD_CONFIG_BACKBONE_ROUTER_DUA_NDPROXYING_ENABLE 0
+
+// Enable to support BBR feature.
+#define OPENTHREAD_CONFIG_MLR_ENABLE 1
+
+// Enable the external heap.
+#define OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE 1
+
+// Disable TREL as it's not yet supported.
+#define OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE 0
 
 // Enable Link Metrics subject feature for Thread certification test.
 #define OPENTHREAD_CONFIG_MLE_LINK_METRICS_SUBJECT_ENABLE 1
