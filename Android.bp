@@ -86,7 +86,6 @@ cc_defaults {
         "-DPACKAGE_TARNAME=\"openthread\"",
         "-DPACKAGE_URL=\"http://github.com/openthread/openthread\"",
         "-DSPINEL_PLATFORM_HEADER=\"spinel_platform.h\"",
-        "-DOPENTHREAD_POSIX_CONFIG_SPINEL_HDLC_INTERFACE_ENABLE=0",
         "-DOPENTHREAD_POSIX_CONFIG_SPINEL_SPI_INTERFACE_ENABLE=0",
         "-DOPENTHREAD_POSIX_CONFIG_SPINEL_VENDOR_INTERFACE_ENABLE=1",
     ],
