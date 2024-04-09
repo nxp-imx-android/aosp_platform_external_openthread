@@ -649,9 +649,6 @@ private:
     void  HandleDataRequest(RxInfo &aRxInfo);
     void  HandleNetworkDataUpdateRouter(void);
     void  HandleDiscoveryRequest(RxInfo &aRxInfo);
-#if OPENTHREAD_CONFIG_TIME_SYNC_ENABLE
-    void HandleTimeSync(RxInfo &aRxInfo);
-#endif
 
     Error ProcessRouteTlv(const RouteTlv &aRouteTlv, RxInfo &aRxInfo);
     Error ReadAndProcessRouteTlvOnFed(RxInfo &aRxInfo, uint8_t aParentId);
@@ -666,10 +663,10 @@ private:
                                      const Ip6::MessageInfo &aMessageInfo);
     void  SendAddressRelease(void);
     void  SendAdvertisement(void);
-    Error SendLinkAccept(const Ip6::MessageInfo &aMessageInfo,
-                         Neighbor               *aNeighbor,
-                         const TlvList          &aRequestedTlvList,
-                         const RxChallenge      &aChallenge);
+    Error SendLinkAccept(const RxInfo      &aRxInfo,
+                         Neighbor          *aNeighbor,
+                         const TlvList     &aRequestedTlvList,
+                         const RxChallenge &aChallenge);
     void  SendParentResponse(Child *aChild, const RxChallenge &aChallenge, bool aRoutersOnlyRequest);
     Error SendChildIdResponse(Child &aChild);
     Error SendChildUpdateRequest(Child &aChild);
