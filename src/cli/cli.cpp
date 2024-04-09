@@ -68,7 +68,9 @@
 #include <openthread/backbone_router_ftd.h>
 #endif
 #endif
-#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && OPENTHREAD_FTD
+#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && \
+    (OPENTHREAD_FTD ||                          \
+     (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE))
 #include <openthread/channel_manager.h>
 #endif
 #if OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
@@ -99,7 +101,7 @@ static OT_DEFINE_ALIGNED_VAR(sInterpreterRaw, sizeof(Interpreter), uint64_t);
 
 Interpreter::Interpreter(Instance *aInstance, otCliOutputCallback aCallback, void *aContext)
     : OutputImplementer(aCallback, aContext)
-    , Output(aInstance, *this)
+    , Utils(aInstance, *this)
     , mCommandIsPending(false)
     , mInternalDebugCommand(false)
     , mTimer(*aInstance, HandleTimer, this)
@@ -337,7 +339,7 @@ void Interpreter::ProcessLine(char *aBuf)
         VerifyOrExit(StringLength(aBuf, kMaxLineLength) <= kMaxLineLength - 1, error = OT_ERROR_PARSE);
     }
 
-    SuccessOrExit(error = Utils::CmdLineParser::ParseCmd(aBuf, args, kMaxArgs));
+    SuccessOrExit(error = ot::Utils::CmdLineParser::ParseCmd(aBuf, args, kMaxArgs));
     VerifyOrExit(!args[0].IsEmpty(), mCommandIsPending = false);
 
     if (!mInternalDebugCommand)
@@ -408,26 +410,6 @@ otError Interpreter::SetUserCommands(const otCliCommand *aCommands, uint8_t aLen
     return error;
 }
 
-otError Interpreter::ParseEnableOrDisable(const Arg &aArg, bool &aEnable)
-{
-    otError error = OT_ERROR_NONE;
-
-    if (aArg == "enable")
-    {
-        aEnable = true;
-    }
-    else if (aArg == "disable")
-    {
-        aEnable = false;
-    }
-    else
-    {
-        error = OT_ERROR_INVALID_COMMAND;
-    }
-
-    return error;
-}
-
 #if OPENTHREAD_FTD || OPENTHREAD_MTD
 
 otError Interpreter::ParseJoinerDiscerner(Arg &aArg, otJoinerDiscerner &aDiscerner)
@@ -441,7 +423,7 @@ otError Interpreter::ParseJoinerDiscerner(Arg &aArg, otJoinerDiscerner &aDiscern
 
     VerifyOrExit(separator != nullptr, error = OT_ERROR_NOT_FOUND);
 
-    SuccessOrExit(error = Utils::CmdLineParser::ParseAsUint8(separator + 1, aDiscerner.mLength));
+    SuccessOrExit(error = ot::Utils::CmdLineParser::ParseAsUint8(separator + 1, aDiscerner.mLength));
     VerifyOrExit(aDiscerner.mLength > 0 && aDiscerner.mLength <= 64, error = OT_ERROR_INVALID_ARGS);
     *separator = '\0';
     error      = aArg.ParseAsUint64(aDiscerner.mValue);
@@ -610,6 +592,98 @@ template <> otError Interpreter::Process<Cmd("ba")>(Arg aArgs[])
         }
     }
 #endif // OPENTHREAD_CONFIG_BORDER_AGENT_ID_ENABLE
+#if OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
+    else if (aArgs[0] == "ephemeralkey")
+    {
+        /**
+         * @cli ba ephemeralkey
+         * @code
+         * ba ephemeralkey
+         * active
+         * Done
+         * @endcode
+         * @par api_copy
+         * #otBorderAgentIsEphemeralKeyActive
+         */
+        if (aArgs[1].IsEmpty())
+        {
+            OutputLine("%sactive", otBorderAgentIsEphemeralKeyActive(GetInstancePtr()) ? "" : "in");
+        }
+        /**
+         * @cli ba ephemeralkey set <keystring> [timeout-in-msec] [port]
+         * @code
+         * ba ephemeralkey set Z10X20g3J15w1000P60m16 5000 1234
+         * Done
+         * @endcode
+         * @par api_copy
+         * #otBorderAgentSetEphemeralKey
+         */
+        else if (aArgs[1] == "set")
+        {
+            uint32_t timeout = 0;
+            uint16_t port    = 0;
+
+            VerifyOrExit(!aArgs[2].IsEmpty(), error = OT_ERROR_INVALID_ARGS);
+
+            if (!aArgs[3].IsEmpty())
+            {
+                SuccessOrExit(error = aArgs[3].ParseAsUint32(timeout));
+            }
+
+            if (!aArgs[4].IsEmpty())
+            {
+                SuccessOrExit(error = aArgs[4].ParseAsUint16(port));
+            }
+
+            error = otBorderAgentSetEphemeralKey(GetInstancePtr(), aArgs[2].GetCString(), timeout, port);
+        }
+        /**
+         * @cli ba ephemeralkey clear
+         * @code
+         * ba ephemeralkey clear
+         * Done
+         * @endcode
+         * @par api_copy
+         * #otBorderAgentClearEphemeralKey
+         */
+        else if (aArgs[1] == "clear")
+        {
+            otBorderAgentClearEphemeralKey(GetInstancePtr());
+        }
+        /**
+         * @cli ba ephemeralkey callback (enable, disable)
+         * @code
+         * ba ephemeralkey callback enable
+         * Done
+         * ba ephemeralkey set W10X1 5000 49155
+         * Done
+         * BorderAgent callback: Ephemeral key active, port:49155
+         * BorderAgent callback: Ephemeral key inactive
+         * @endcode
+         * @par api_copy
+         * #otBorderAgentSetEphemeralKeyCallback
+         */
+        else if (aArgs[1] == "callback")
+        {
+            bool enable;
+
+            SuccessOrExit(error = ParseEnableOrDisable(aArgs[2], enable));
+
+            if (enable)
+            {
+                otBorderAgentSetEphemeralKeyCallback(GetInstancePtr(), HandleBorderAgentEphemeralKeyStateChange, this);
+            }
+            else
+            {
+                otBorderAgentSetEphemeralKeyCallback(GetInstancePtr(), nullptr, nullptr);
+            }
+        }
+        else
+        {
+            error = OT_ERROR_INVALID_ARGS;
+        }
+    }
+#endif // OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
     else
     {
         ExitNow(error = OT_ERROR_INVALID_COMMAND);
@@ -618,6 +692,28 @@ template <> otError Interpreter::Process<Cmd("ba")>(Arg aArgs[])
 exit:
     return error;
 }
+
+#if OPENTHREAD_CONFIG_BORDER_AGENT_EPHEMERAL_KEY_ENABLE
+void Interpreter::HandleBorderAgentEphemeralKeyStateChange(void *aContext)
+{
+    reinterpret_cast<Interpreter *>(aContext)->HandleBorderAgentEphemeralKeyStateChange();
+}
+
+void Interpreter::HandleBorderAgentEphemeralKeyStateChange(void)
+{
+    bool active = otBorderAgentIsEphemeralKeyActive(GetInstancePtr());
+
+    OutputFormat("BorderAgent callback: Ephemeral key %sactive", active ? "" : "in");
+
+    if (active)
+    {
+        OutputFormat(", port:%u", otBorderAgentGetUdpPort(GetInstancePtr()));
+    }
+
+    OutputNewLine();
+}
+#endif
+
 #endif // OPENTHREAD_CONFIG_BORDER_AGENT_ENABLE
 
 #if OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE
@@ -1330,7 +1426,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
         }
     }
 #endif // OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
-#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && OPENTHREAD_FTD
+#if OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE && \
+    (OPENTHREAD_FTD ||                          \
+     (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE))
     else if (aArgs[0] == "manager")
     {
         /**
@@ -1347,26 +1445,42 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @endcode
          * @par
          * Get the channel manager state.
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` is required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE` is required.
          * @sa otChannelManagerGetRequestedChannel
          */
         if (aArgs[1].IsEmpty())
         {
             OutputLine("channel: %u", otChannelManagerGetRequestedChannel(GetInstancePtr()));
+#if OPENTHREAD_FTD
             OutputLine("auto: %d", otChannelManagerGetAutoChannelSelectionEnabled(GetInstancePtr()));
+#endif
+#if (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE)
+            OutputLine("autocsl: %u", otChannelManagerGetAutoCslChannelSelectionEnabled(GetInstancePtr()));
+#endif
 
+#if (OPENTHREAD_FTD && OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && \
+     OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE)
+            if (otChannelManagerGetAutoChannelSelectionEnabled(GetInstancePtr()) ||
+                otChannelManagerGetAutoCslChannelSelectionEnabled(GetInstancePtr()))
+#elif OPENTHREAD_FTD
             if (otChannelManagerGetAutoChannelSelectionEnabled(GetInstancePtr()))
+#elif (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE)
+            if (otChannelManagerGetAutoCslChannelSelectionEnabled(GetInstancePtr()))
+#endif
             {
                 Mac::ChannelMask supportedMask(otChannelManagerGetSupportedChannels(GetInstancePtr()));
                 Mac::ChannelMask favoredMask(otChannelManagerGetFavoredChannels(GetInstancePtr()));
-
+#if OPENTHREAD_FTD
                 OutputLine("delay: %u", otChannelManagerGetDelay(GetInstancePtr()));
+#endif
                 OutputLine("interval: %lu", ToUlong(otChannelManagerGetAutoChannelSelectionInterval(GetInstancePtr())));
                 OutputLine("cca threshold: 0x%04x", otChannelManagerGetCcaFailureRateThreshold(GetInstancePtr()));
                 OutputLine("supported: %s", supportedMask.ToString().AsCString());
                 OutputLine("favored: %s", favoredMask.ToString().AsCString());
             }
         }
+#if OPENTHREAD_FTD
         /**
          * @cli channel manager change
          * @code
@@ -1395,7 +1509,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @cparam channel manager select @ca{skip-quality-check}
          * Use a `1` or `0` for the boolean `skip-quality-check`.
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerRequestChannelSelect
          */
@@ -1406,7 +1522,7 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
             SuccessOrExit(error = aArgs[2].ParseAsBool(enable));
             error = otChannelManagerRequestChannelSelect(GetInstancePtr(), enable);
         }
-#endif
+#endif // OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE
         /**
          * @cli channel manager auto
          * @code
@@ -1417,7 +1533,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @cparam channel manager auto @ca{enable}
          * `1` is a boolean to `enable`.
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerSetAutoChannelSelectionEnabled
          */
@@ -1428,6 +1546,32 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
             SuccessOrExit(error = aArgs[2].ParseAsBool(enable));
             otChannelManagerSetAutoChannelSelectionEnabled(GetInstancePtr(), enable);
         }
+#endif // OPENTHREAD_FTD
+#if (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE)
+        /**
+         * @cli channel manager autocsl
+         * @code
+         * channel manager autocsl 1
+         * Done
+         * @endcode
+         * @cparam channel manager autocsl @ca{enable}
+         * `1` is a boolean to `enable`.
+         * @par
+         * Enables or disables the auto channel selection functionality for a CSL channel.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
+         * @sa otChannelManagerSetAutoCslChannelSelectionEnabled
+         */
+        else if (aArgs[1] == "autocsl")
+        {
+            bool enable;
+
+            SuccessOrExit(error = aArgs[2].ParseAsBool(enable));
+            otChannelManagerSetAutoCslChannelSelectionEnabled(GetInstancePtr(), enable);
+        }
+#endif // (OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE && OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE)
+#if OPENTHREAD_FTD
         /**
          * @cli channel manager delay
          * @code
@@ -1445,6 +1589,7 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
         {
             error = ProcessGetSet(aArgs + 2, otChannelManagerGetDelay, otChannelManagerSetDelay);
         }
+#endif
         /**
          * @cli channel manager interval
          * @code
@@ -1454,7 +1599,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @endcode
          * @cparam channel manager interval @ca{interval-seconds}
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerSetAutoChannelSelectionInterval
          */
@@ -1471,7 +1618,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @endcode
          * @cparam channel manager supported @ca{mask}
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerSetSupportedChannels
          */
@@ -1488,7 +1637,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @endcode
          * @cparam channel manager favored @ca{mask}
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerSetFavoredChannels
          */
@@ -1506,7 +1657,9 @@ template <> otError Interpreter::Process<Cmd("channel")>(Arg aArgs[])
          * @cparam channel manager threshold @ca{threshold-percent}
          * Use a hex value for `threshold-percent`. `0` maps to 0% and `0xffff` maps to 100%.
          * @par
-         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE` are required.
+         * `OPENTHREAD_CONFIG_CHANNEL_MANAGER_ENABLE` or `OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE &&
+         * OPENTHREAD_CONFIG_CHANNEL_MANAGER_CSL_CHANNEL_SELECT_ENABLE`, and `OPENTHREAD_CONFIG_CHANNEL_MONITOR_ENABLE`
+         * are required.
          * @par api_copy
          * #otChannelManagerSetCcaFailureRateThreshold
          */
@@ -2371,9 +2524,9 @@ template <> otError Interpreter::Process<Cmd("csl")>(Arg aArgs[])
      */
     if (aArgs[0].IsEmpty())
     {
-        OutputLine("Channel: %u", otLinkGetCslChannel(GetInstancePtr()));
-        OutputLine("Period: %luus", ToUlong(otLinkGetCslPeriod(GetInstancePtr())));
-        OutputLine("Timeout: %lus", ToUlong(otLinkGetCslTimeout(GetInstancePtr())));
+        OutputLine("channel: %u", otLinkGetCslChannel(GetInstancePtr()));
+        OutputLine("period: %luus", ToUlong(otLinkGetCslPeriod(GetInstancePtr())));
+        OutputLine("timeout: %lus", ToUlong(otLinkGetCslTimeout(GetInstancePtr())));
     }
     /**
      * @cli csl channel
@@ -8209,76 +8362,6 @@ void Interpreter::Initialize(otInstance *aInstance, otCliOutputCallback aCallbac
     Instance *instance = static_cast<Instance *>(aInstance);
 
     Interpreter::sInterpreter = new (&sInterpreterRaw) Interpreter(instance, aCallback, aContext);
-}
-
-otError Interpreter::ProcessEnableDisable(Arg aArgs[], SetEnabledHandler aSetEnabledHandler)
-{
-    otError error = OT_ERROR_NONE;
-    bool    enable;
-
-    if (ParseEnableOrDisable(aArgs[0], enable) == OT_ERROR_NONE)
-    {
-        aSetEnabledHandler(GetInstancePtr(), enable);
-    }
-    else
-    {
-        error = OT_ERROR_INVALID_COMMAND;
-    }
-
-    return error;
-}
-
-otError Interpreter::ProcessEnableDisable(Arg aArgs[], SetEnabledHandlerFailable aSetEnabledHandler)
-{
-    otError error = OT_ERROR_NONE;
-    bool    enable;
-
-    if (ParseEnableOrDisable(aArgs[0], enable) == OT_ERROR_NONE)
-    {
-        error = aSetEnabledHandler(GetInstancePtr(), enable);
-    }
-    else
-    {
-        error = OT_ERROR_INVALID_COMMAND;
-    }
-
-    return error;
-}
-
-otError Interpreter::ProcessEnableDisable(Arg               aArgs[],
-                                          IsEnabledHandler  aIsEnabledHandler,
-                                          SetEnabledHandler aSetEnabledHandler)
-{
-    otError error = OT_ERROR_NONE;
-
-    if (aArgs[0].IsEmpty())
-    {
-        OutputEnabledDisabledStatus(aIsEnabledHandler(GetInstancePtr()));
-    }
-    else
-    {
-        error = ProcessEnableDisable(aArgs, aSetEnabledHandler);
-    }
-
-    return error;
-}
-
-otError Interpreter::ProcessEnableDisable(Arg                       aArgs[],
-                                          IsEnabledHandler          aIsEnabledHandler,
-                                          SetEnabledHandlerFailable aSetEnabledHandler)
-{
-    otError error = OT_ERROR_NONE;
-
-    if (aArgs[0].IsEmpty())
-    {
-        OutputEnabledDisabledStatus(aIsEnabledHandler(GetInstancePtr()));
-    }
-    else
-    {
-        error = ProcessEnableDisable(aArgs, aSetEnabledHandler);
-    }
-
-    return error;
 }
 
 void Interpreter::OutputPrompt(void)

@@ -1134,9 +1134,13 @@ void Mac::RecordCcaStatus(bool aCcaSuccess, uint8_t aChannel)
     }
 
     // Only track the CCA success rate for frame transmissions
-    // on the PAN channel.
+    // on the PAN channel or the CSL channel.
 
+#if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE
+    if ((aChannel == mPanChannel) || (IsCslEnabled() && (aChannel == mCslChannel)))
+#else
     if (aChannel == mPanChannel)
+#endif
     {
         if (mCcaSampleCount < kMaxCcaSampleCount)
         {
@@ -1637,7 +1641,7 @@ Error Mac::ProcessReceiveSecurity(RxFrame &aFrame, const Address &aSrcAddr, Neig
 
         if (keySequence > keyManager.GetCurrentKeySequence())
         {
-            keyManager.SetCurrentKeySequence(keySequence);
+            keyManager.SetCurrentKeySequence(keySequence, KeyManager::kApplyKeySwitchGuard);
         }
     }
 
