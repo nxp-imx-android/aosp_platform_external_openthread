@@ -627,10 +627,16 @@ Error MeshForwarder::CheckReachability(const FrameData &aFrameData, const Mac::A
 
     error = ip6Headers.DecompressFrom(aFrameData, aMeshAddrs, GetInstance());
 
-    if (error == kErrorNotFound)
+    switch (error)
     {
+    case kErrorNone:
+        break;
+    case kErrorNotFound:
         // Frame may not contain an IPv6 header.
-        ExitNow(error = kErrorNone);
+        error = kErrorNone;
+        OT_FALL_THROUGH;
+    default:
+        ExitNow();
     }
 
     error = Get<Mle::MleRouter>().CheckReachability(aMeshAddrs.mDestination.GetShort(), ip6Headers.GetIp6Header());
@@ -706,13 +712,7 @@ void MeshForwarder::HandleMesh(FrameData &aFrameData, const Mac::Address &aMacSo
         SuccessOrExit(error = meshHeader.AppendTo(*messagePtr));
         SuccessOrExit(error = messagePtr->AppendData(aFrameData));
 
-        messagePtr->SetLinkInfo(aLinkInfo);
-
-#if OPENTHREAD_CONFIG_MULTI_RADIO
-        // We set the received radio type on the message in order for it
-        // to be logged correctly from LogMessage().
-        messagePtr->SetRadioType(static_cast<Mac::RadioType>(aLinkInfo.mRadioType));
-#endif
+        messagePtr->UpdateLinkInfoFrom(aLinkInfo);
 
         LogMessage(kMessageReceive, *messagePtr, kErrorNone, &aMacSource);
 
