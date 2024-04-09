@@ -343,12 +343,12 @@ filegroup {
         "src/cli/cli_link_metrics.cpp",
         "src/cli/cli_mac_filter.cpp",
         "src/cli/cli_network_data.cpp",
-        "src/cli/cli_output.cpp",
         "src/cli/cli_ping.cpp",
         "src/cli/cli_srp_client.cpp",
         "src/cli/cli_srp_server.cpp",
         "src/cli/cli_tcp.cpp",
         "src/cli/cli_udp.cpp",
+        "src/cli/cli_utils.cpp",
     ],
 }
 
@@ -376,6 +376,7 @@ filegroup {
         "examples/platforms/simulation/logging.c",
         "examples/platforms/simulation/misc.c",
         "examples/platforms/simulation/radio.c",
+        "examples/platforms/simulation/simul_utils.c",
         "examples/platforms/simulation/spi-stubs.c",
         "examples/platforms/simulation/system.c",
         "examples/platforms/simulation/trel.c",
@@ -522,6 +523,7 @@ cc_library_static {
         "src/android/thread_network_hal/vendor_interface.cpp",
         "src/lib/hdlc/hdlc.cpp",
         "src/lib/platform/exit_code.c",
+        "src/lib/spinel/logger.cpp",
         "src/lib/spinel/radio_spinel.cpp",
         "src/lib/spinel/spinel.c",
         "src/lib/spinel/spinel_buffer.cpp",
@@ -577,12 +579,12 @@ cc_library_static {
         "src/cli/cli_link_metrics.cpp",
         "src/cli/cli_mac_filter.cpp",
         "src/cli/cli_network_data.cpp",
-        "src/cli/cli_output.cpp",
         "src/cli/cli_ping.cpp",
         "src/cli/cli_srp_client.cpp",
         "src/cli/cli_srp_server.cpp",
         "src/cli/cli_tcp.cpp",
         "src/cli/cli_udp.cpp",
+        "src/cli/cli_utils.cpp",
     ],
 }
 
