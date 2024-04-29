@@ -936,6 +936,7 @@ cc_library_static {
         "src/posix/platform/alarm.cpp",
         "src/posix/platform/mainloop.cpp",
         "src/posix/platform/hdlc_interface.cpp",
+        "src/posix/platform/radio_url.cpp",
     ],
 }
 
