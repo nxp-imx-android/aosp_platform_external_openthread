@@ -1242,7 +1242,8 @@ void RoutingManager::DiscoveredPrefixTable::FindFavoredOnLinkPrefix(Ip6::Prefix 
     {
         for (const Entry &entry : router.mEntries)
         {
-            if (!entry.IsOnLinkPrefix() || entry.IsDeprecated())
+            if (!entry.IsOnLinkPrefix() || entry.IsDeprecated() ||
+                (entry.GetPreferredLifetime() < kFavoredOnLinkPrefixMinPreferredLifetime))
             {
                 continue;
             }
