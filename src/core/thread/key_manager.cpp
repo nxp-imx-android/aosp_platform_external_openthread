@@ -60,9 +60,6 @@ const uint8_t KeyManager::kTrelInfoString[] = {'T', 'h', 'r', 'e', 'a', 'd', 'O'
                                                'r', 'I', 'n', 'f', 'r', 'a', 'K', 'e', 'y'};
 #endif
 
-//---------------------------------------------------------------------------------------------------------------------
-// SecurityPolicy
-
 void SecurityPolicy::SetToDefault(void)
 {
     mRotationTime = kDefaultKeyRotationTime;
@@ -166,9 +163,6 @@ exit:
     return;
 }
 
-//---------------------------------------------------------------------------------------------------------------------
-// KeyManager
-
 KeyManager::KeyManager(Instance &aInstance)
     : InstanceLocator(aInstance)
     , mKeySequence(0)
@@ -177,7 +171,7 @@ KeyManager::KeyManager(Instance &aInstance)
     , mStoredMleFrameCounter(0)
     , mHoursSinceKeyRotation(0)
     , mKeySwitchGuardTime(kDefaultKeySwitchGuardTime)
-    , mKeySwitchGuardTimer(0)
+    , mKeySwitchGuardEnabled(false)
     , mKeyRotationTimer(aInstance)
     , mKekFrameCounter(0)
     , mIsPskcSet(false)
@@ -204,8 +198,8 @@ KeyManager::KeyManager(Instance &aInstance)
 
 void KeyManager::Start(void)
 {
-    mKeySwitchGuardTimer = 0;
-    ResetKeyRotationTimer();
+    mKeySwitchGuardEnabled = false;
+    StartKeyRotationTimer();
 }
 
 void KeyManager::Stop(void) { mKeyRotationTimer.Stop(); }
@@ -368,13 +362,20 @@ void KeyManager::UpdateKeyMaterial(void)
 #endif
 }
 
-void KeyManager::SetCurrentKeySequence(uint32_t aKeySequence, KeySequenceUpdateMode aUpdateMode)
+void KeyManager::SetCurrentKeySequence(uint32_t aKeySequence)
 {
     VerifyOrExit(aKeySequence != mKeySequence, Get<Notifier>().SignalIfFirst(kEventThreadKeySeqCounterChanged));
 
-    if (aUpdateMode == kApplyKeySwitchGuard)
+    if ((aKeySequence == (mKeySequence + 1)) && mKeyRotationTimer.IsRunning())
     {
-        VerifyOrExit(mKeySwitchGuardTimer == 0);
+        if (mKeySwitchGuardEnabled)
+        {
+            // Check if the guard timer has expired if key rotation is requested.
+            VerifyOrExit(mHoursSinceKeyRotation >= mKeySwitchGuardTime);
+            StartKeyRotationTimer();
+        }
+
+        mKeySwitchGuardEnabled = true;
     }
 
     mKeySequence = aKeySequence;
@@ -382,9 +383,6 @@ void KeyManager::SetCurrentKeySequence(uint32_t aKeySequence, KeySequenceUpdateM
 
     SetAllMacFrameCounters(0, /* aSetIfLarger */ false);
     mMleFrameCounter = 0;
-
-    ResetKeyRotationTimer();
-    mKeySwitchGuardTimer = mKeySwitchGuardTime;
 
     Get<Notifier>().Signal(kEventThreadKeySeqCounterChanged);
 
@@ -478,57 +476,40 @@ void KeyManager::SetKek(const Kek &aKek)
 
 void KeyManager::SetSecurityPolicy(const SecurityPolicy &aSecurityPolicy)
 {
-    SecurityPolicy newPolicy = aSecurityPolicy;
-
-    if (newPolicy.mRotationTime < SecurityPolicy::kMinKeyRotationTime)
+    if (aSecurityPolicy.mRotationTime < SecurityPolicy::kMinKeyRotationTime)
     {
-        newPolicy.mRotationTime = SecurityPolicy::kMinKeyRotationTime;
-        LogNote("Key Rotation Time in SecurityPolicy is set to min allowed value of %u", newPolicy.mRotationTime);
+        LogNote("Key Rotation Time too small: %d", aSecurityPolicy.mRotationTime);
+        ExitNow();
     }
 
-    if (newPolicy.mRotationTime != mSecurityPolicy.mRotationTime)
-    {
-        uint32_t newGuardTime = newPolicy.mRotationTime;
+    IgnoreError(Get<Notifier>().Update(mSecurityPolicy, aSecurityPolicy, kEventSecurityPolicyChanged));
 
-        // Calculations are done using a `uint32_t` variable to prevent
-        // potential overflow.
-
-        newGuardTime *= kKeySwitchGuardTimePercentage;
-        newGuardTime /= 100;
-
-        mKeySwitchGuardTime = static_cast<uint16_t>(newGuardTime);
-    }
-
-    IgnoreError(Get<Notifier>().Update(mSecurityPolicy, newPolicy, kEventSecurityPolicyChanged));
-
-    CheckForKeyRotation();
+exit:
+    return;
 }
 
-void KeyManager::ResetKeyRotationTimer(void)
+void KeyManager::StartKeyRotationTimer(void)
 {
     mHoursSinceKeyRotation = 0;
-    mKeyRotationTimer.Start(Time::kOneHourInMsec);
+    mKeyRotationTimer.Start(kOneHourIntervalInMsec);
 }
 
 void KeyManager::HandleKeyRotationTimer(void)
 {
-    mKeyRotationTimer.Start(Time::kOneHourInMsec);
-
     mHoursSinceKeyRotation++;
 
-    if (mKeySwitchGuardTimer > 0)
-    {
-        mKeySwitchGuardTimer--;
-    }
+    // Order of operations below is important. We should restart the timer (from
+    // last fire time for one hour interval) before potentially calling
+    // `SetCurrentKeySequence()`. `SetCurrentKeySequence()` uses the fact that
+    // timer is running to decide to check for the guard time and to reset the
+    // rotation timer (and the `mHoursSinceKeyRotation`) if it updates the key
+    // sequence.
 
-    CheckForKeyRotation();
-}
+    mKeyRotationTimer.StartAt(mKeyRotationTimer.GetFireTime(), kOneHourIntervalInMsec);
 
-void KeyManager::CheckForKeyRotation(void)
-{
     if (mHoursSinceKeyRotation >= mSecurityPolicy.mRotationTime)
     {
-        SetCurrentKeySequence(mKeySequence + 1, kForceUpdate);
+        SetCurrentKeySequence(mKeySequence + 1);
     }
 }
 
