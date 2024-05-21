@@ -378,7 +378,7 @@ void Mle::Restore(void)
 
     SuccessOrExit(Get<Settings>().Read(networkInfo));
 
-    Get<KeyManager>().SetCurrentKeySequence(networkInfo.GetKeySequence(), KeyManager::kForceUpdate);
+    Get<KeyManager>().SetCurrentKeySequence(networkInfo.GetKeySequence());
     Get<KeyManager>().SetMleFrameCounter(networkInfo.GetMleFrameCounter());
     Get<KeyManager>().SetAllMacFrameCounters(networkInfo.GetMacFrameCounter(), /* aSetIfLarger */ false);
 
@@ -2736,7 +2736,7 @@ void Mle::ProcessKeySequence(RxInfo &aRxInfo)
     switch (aRxInfo.mClass)
     {
     case RxInfo::kAuthoritativeMessage:
-        Get<KeyManager>().SetCurrentKeySequence(aRxInfo.mKeySequence, KeyManager::kForceUpdate);
+        Get<KeyManager>().SetCurrentKeySequence(aRxInfo.mKeySequence);
         break;
 
     case RxInfo::kPeerMessage:
@@ -2744,7 +2744,7 @@ void Mle::ProcessKeySequence(RxInfo &aRxInfo)
         {
             if (aRxInfo.mKeySequence - Get<KeyManager>().GetCurrentKeySequence() == 1)
             {
-                Get<KeyManager>().SetCurrentKeySequence(aRxInfo.mKeySequence, KeyManager::kApplyKeySwitchGuard);
+                Get<KeyManager>().SetCurrentKeySequence(aRxInfo.mKeySequence);
             }
             else
             {
