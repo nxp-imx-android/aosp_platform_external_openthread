@@ -1826,8 +1826,6 @@ Done
 
 Set the Thread Key Sequence Counter.
 
-This command is reserved for testing and demo purposes only. Changing Key Sequence Counter will render a production application non-compliant with the Thread Specification.
-
 ```bash
 > keysequence counter 10
 Done
@@ -1845,9 +1843,7 @@ Done
 
 ### keysequence guardtime \<guardtime\>
 
-Set Thread Key Switch Guard Time (in hours).
-
-This command is reserved for testing and demo purposes only. Changing Key Switch Guard Time will render a production application non-compliant with the Thread Specification.
+Set Thread Key Switch Guard Time (in hours) 0 means Thread Key Switch immediately if key index match
 
 ```bash
 > keysequence guardtime 0

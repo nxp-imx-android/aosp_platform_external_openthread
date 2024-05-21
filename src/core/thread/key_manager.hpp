@@ -77,17 +77,8 @@ public:
      */
     static constexpr uint8_t kVersionThresholdOffsetVersion = 3;
 
-    /**
-     * Default Key Rotation Time (in unit of hours).
-     *
-     */
-    static constexpr uint16_t kDefaultKeyRotationTime = 672;
-
-    /**
-     * Minimum Key Rotation Time (in unit of hours).
-     *
-     */
-    static constexpr uint16_t kMinKeyRotationTime = 2;
+    static constexpr uint16_t kMinKeyRotationTime     = 1;   ///< The minimum Key Rotation Time in hours.
+    static constexpr uint16_t kDefaultKeyRotationTime = 672; ///< Default Key Rotation Time (in unit of hours).
 
     /**
      * Initializes the object with default Key Rotation Time
@@ -221,18 +212,6 @@ class KeyManager : public InstanceLocator, private NonCopyable
 {
 public:
     /**
-     * Determines whether to apply or ignore key switch guard when updating the key sequence.
-     *
-     * Used as input by `SetCurrentKeySequence()`.
-     *
-     */
-    enum KeySequenceUpdateMode : uint8_t
-    {
-        kApplyKeySwitchGuard, ///< Apply key switch guard check before setting the new key sequence.
-        kForceUpdate,         ///< Ignore key switch guard check and forcibly update the key sequence to new value.
-    };
-
-    /**
      * Initializes the object.
      *
      * @param[in]  aInstance     A reference to the OpenThread instance.
@@ -342,14 +321,10 @@ public:
     /**
      * Sets the current key sequence value.
      *
-     * If @p aMode is `kApplyKeySwitchGuard`, the current key switch guard timer is checked and only if it is zero, key
-     * sequence will be updated.
-     *
-     * @param[in]  aKeySequence    The key sequence value.
-     * @param[in]  aUpdateMode     Whether or not to apply the key switch guard.
+     * @param[in]  aKeySequence  The key sequence value.
      *
      */
-    void SetCurrentKeySequence(uint32_t aKeySequence, KeySequenceUpdateMode aUpdateMode);
+    void SetCurrentKeySequence(uint32_t aKeySequence);
 
 #if OPENTHREAD_CONFIG_RADIO_LINK_TREL_ENABLE
     /**
@@ -525,19 +500,17 @@ public:
      * @returns The KeySwitchGuardTime value in hours.
      *
      */
-    uint16_t GetKeySwitchGuardTime(void) const { return mKeySwitchGuardTime; }
+    uint32_t GetKeySwitchGuardTime(void) const { return mKeySwitchGuardTime; }
 
     /**
      * Sets the KeySwitchGuardTime.
      *
      * The KeySwitchGuardTime is the time interval during which key rotation procedure is prevented.
      *
-     * Intended for testing only. Changing the guard time will render device non-compliant with the Thread spec.
-     *
-     * @param[in]  aGuardTime  The KeySwitchGuardTime value in hours.
+     * @param[in]  aKeySwitchGuardTime  The KeySwitchGuardTime value in hours.
      *
      */
-    void SetKeySwitchGuardTime(uint16_t aGuardTime) { mKeySwitchGuardTime = aGuardTime; }
+    void SetKeySwitchGuardTime(uint32_t aKeySwitchGuardTime) { mKeySwitchGuardTime = aKeySwitchGuardTime; }
 
     /**
      * Returns the Security Policy.
@@ -592,13 +565,9 @@ public:
 #endif
 
 private:
-    static constexpr uint16_t kDefaultKeySwitchGuardTime    = 624; // ~ 93% of 672 (default key rotation time)
-    static constexpr uint32_t kKeySwitchGuardTimePercentage = 93;  // Percentage of key rotation time.
-    static constexpr bool     kExportableMacKeys            = OPENTHREAD_CONFIG_PLATFORM_MAC_KEYS_EXPORTABLE_ENABLE;
-
-    static_assert(kDefaultKeySwitchGuardTime ==
-                      SecurityPolicy::kDefaultKeyRotationTime * kKeySwitchGuardTimePercentage / 100,
-                  "Default key switch guard time value is not correct");
+    static constexpr uint32_t kDefaultKeySwitchGuardTime = 624;
+    static constexpr uint32_t kOneHourIntervalInMsec     = 3600u * 1000u;
+    static constexpr bool     kExportableMacKeys         = OPENTHREAD_CONFIG_PLATFORM_MAC_KEYS_EXPORTABLE_ENABLE;
 
     OT_TOOL_PACKED_BEGIN
     struct Keys
@@ -622,9 +591,8 @@ private:
     void ComputeTrelKey(uint32_t aKeySequence, Mac::Key &aKey) const;
 #endif
 
-    void ResetKeyRotationTimer(void);
+    void StartKeyRotationTimer(void);
     void HandleKeyRotationTimer(void);
-    void CheckForKeyRotation(void);
 
 #if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
     void StoreNetworkKey(const NetworkKey &aNetworkKey, bool aOverWriteExisting);
@@ -662,9 +630,9 @@ private:
     uint32_t               mStoredMacFrameCounter;
     uint32_t               mStoredMleFrameCounter;
 
-    uint16_t      mHoursSinceKeyRotation;
-    uint16_t      mKeySwitchGuardTime;
-    uint16_t      mKeySwitchGuardTimer;
+    uint32_t      mHoursSinceKeyRotation;
+    uint32_t      mKeySwitchGuardTime;
+    bool          mKeySwitchGuardEnabled;
     RotationTimer mKeyRotationTimer;
 
 #if OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE
