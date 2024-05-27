@@ -655,6 +655,7 @@ cc_defaults {
         "-DOPENTHREAD_CONFIG_TCP_ENABLE=0",
         "-DOPENTHREAD_PROJECT_CORE_CONFIG_FILE=\"examples/platforms/simulation/openthread-core-simulation-config.h\"",
         "-DOPENTHREAD_SETTINGS_RAM=1",
+        "-DOPENTHREAD_SIMULATION_MAX_NETWORK_SIZE=128",
         "-DPACKAGE=\"openthread\"",
         "-DPACKAGE_BUGREPORT=\"openthread-devel@googlegroups.com\"",
         "-DPACKAGE_NAME=\"OPENTHREAD\"",
