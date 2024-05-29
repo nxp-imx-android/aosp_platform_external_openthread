@@ -63,6 +63,8 @@ bool RadioSpinel::sSupportsLogStream =
 
 bool RadioSpinel::sSupportsResetToBootloader = false; ///< RCP supports resetting into bootloader mode.
 
+bool RadioSpinel::sSupportsLogCrashDump = false; ///< RCP supports logging a crash dump.
+
 otRadioCaps RadioSpinel::sRadioCaps = OT_RADIO_CAPS_NONE;
 
 inline bool RadioSpinel::IsFrameForUs(spinel_iid_t aIid)
@@ -163,6 +165,12 @@ void RadioSpinel::Init(SpinelInterface    &aSpinelInterface,
     SuccessOrExit(error = Get(SPINEL_PROP_HWADDR, SPINEL_DATATYPE_EUI64_S, sIeeeEui64.m8));
 
     VerifyOrDie(IsRcp(supportsRcpApiVersion, supportsRcpMinHostApiVersion), OT_EXIT_RADIO_SPINEL_INCOMPATIBLE);
+
+    if (sSupportsLogCrashDump)
+    {
+        LogDebg("RCP supports crash dump logging. Requesting crash dump.");
+        SuccessOrExit(error = Set(SPINEL_PROP_RCP_LOG_CRASH_DUMP, nullptr));
+    }
 
     if (!aSkipRcpCompatibilityCheck)
     {
@@ -307,6 +315,11 @@ bool RadioSpinel::IsRcp(bool &aSupportsRcpApiVersion, bool &aSupportsRcpMinHostA
         if (capability == SPINEL_PROP_RCP_MIN_HOST_API_VERSION)
         {
             aSupportsRcpMinHostApiVersion = true;
+        }
+
+        if (capability == SPINEL_CAP_RCP_LOG_CRASH_DUMP)
+        {
+            sSupportsLogCrashDump = true;
         }
 
         capsData += unpacked;
@@ -2183,6 +2196,9 @@ void RadioSpinel::RecoverFromRcpFailure(void)
     }
 
     --mRcpFailureCount;
+
+    SuccessOrDie(Set(SPINEL_PROP_RCP_LOG_CRASH_DUMP, nullptr));
+
     LogNote("RCP recovery is done");
 
 exit:
