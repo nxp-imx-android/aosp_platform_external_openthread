@@ -64,7 +64,7 @@ enum
     OT_PLATFORM_CONFIG_SPI_DEFAULT_ALIGN_ALLOWANCE =
         16, ///< Default maximum number of 0xFF bytes to clip from start of MISO frame.
     OT_PLATFORM_CONFIG_SPI_DEFAULT_SMALL_PACKET_SIZE =
-        32,                                ///< Default smallest SPI packet size we can receive in a single transaction.
+        48,                                ///< Default smallest SPI packet size we can receive in a single transaction.
     OT_PLATFORM_CONFIG_MAX_RADIO_URLS = 2, ///< Max number of Radio URLs.
 };
 

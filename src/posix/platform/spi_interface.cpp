@@ -547,7 +547,7 @@ otError SpiInterface::PushPullSpi(void)
         if ((mSpiSlaveDataLen != 0) && (mSpiSlaveDataLen <= txFrame.GetHeaderAcceptLen()))
         {
             // WAR - Discard first transaction which as transaction greater than 32 bytes with RX data available (as RCP truncated it)
-            if( (mSpiRxDiscard == 0) && (txFrame.GetHeaderAcceptLen() > mSpiSmallPacketSize) && (txFrame.GetHeaderDataLen() == txFrame.GetHeaderAcceptLen()) )
+            if( (mSpiRxDiscard == 0) && (txFrame.GetHeaderAcceptLen() > mSpiSmallPacketSize) && (txFrame.GetHeaderDataLen() == txFrame.GetHeaderAcceptLen()) && (rxFrame.GetHeaderDataLen() > mSpiSmallPacketSize) )
             {
                 LogWarn("WAR RX Frame length (0x%02X) truncated (Header was 0x%02X )", txFrame.GetHeaderAcceptLen(), mSpiSlaveDataLen);
                 mSpiRxDiscard++;
