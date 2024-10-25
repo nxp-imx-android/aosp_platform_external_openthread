@@ -205,8 +205,10 @@ void RadioSpinel::ResetRcp(bool aResetRadio)
     bool hardwareReset;
     bool resetDone = false;
 
+#if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
     // Avoid resetting the device twice in a row in Multipan RCP architecture
     VerifyOrExit(!sIsReady, resetDone = true);
+#endif
 
     mWaitingKey = SPINEL_PROP_LAST_STATUS;
 
