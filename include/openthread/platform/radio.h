@@ -2,6 +2,8 @@
  *  Copyright (c) 2016, The OpenThread Authors.
  *  All rights reserved.
  *
+ *  Copyright 2021-2024 NXP.
+ *
  *  Redistribution and use in source and binary forms, with or without
  *  modification, are permitted provided that the following conditions are met:
  *  1. Redistributions of source code must retain the above copyright
@@ -434,6 +436,25 @@ typedef struct otLinkMetrics
     bool mRssi : 1;       ///< Received Signal Strength Indicator.
     bool mReserved : 1;   ///< Reserved, this is for reference device.
 } otLinkMetrics;
+
+/**
+ * This structure represents different CCA mode configurations before Tx.
+ */
+typedef struct otCCAModeConfig
+{
+    uint8_t mCcaMode;          ///< CCA Mode type [CCA1=0x01, CCA2=0x02, CCA3=0x03[CCA1 AND CCA2], CCA3=0x04[CCA1 OR CCA2], NoCCA=0xFF.
+    uint8_t mCca1Threshold;    ///< Energy threshold for CCA Mode1.
+    uint8_t mCca2CorrThreshold;    ///< CCA Mode 2 Correlation Threshold.
+    uint8_t mCca2MinNumOfCorrTh;    ///< CCA Mode 2 Threshold Number of Correlation Peaks.
+} otCCAModeConfig;
+
+/**
+* This structure represents threshold time for OOB 15.4 soft reset.
+*/
+typedef struct otIRConfig
+{
+    uint16_t mIRThreshold;    ///< threshold time in ms at which OOB toggle will trigger an IR
+} otIRConfig;
 
 /**
  * @}
@@ -1384,11 +1405,60 @@ extern otError otPlatRadioGetRawPowerSetting(otInstance *aInstance,
  * @}
  *
  */
+void otPlatRadioSetIRCmd(otInstance *aInstance);
 
 /**
  * @}
  *
  */
+void otPlatRadioSetIRConfig(otInstance *aInstance, uint8_t mode);
+
+/**
+ * @}
+ *
+ */
+void otPlatRadioGetIRConfig(otInstance *aInstance, uint8_t* mode);
+
+/**
+ * @}
+ *
+ */
+otError otPlatRadioSetIeeeEui64(otInstance *aInstance, const otExtAddress *aIeeeEui64);
+
+/**
+ * @}
+ *
+ */
+otError otPlatRadioSetTxPowerLimit(otInstance *aInstance, uint8_t txPowerLimit);
+/**
+ * @}
+ *
+ */
+otError otPlatRadioGetTxPowerLimit(otInstance *aInstance, uint8_t* txPowerLimit);
+
+/**
+ * @}
+ *
+ */
+otError otPlatRadioMfgCommand(otInstance *aInstance, uint8_t *payload, const uint8_t payloadLenIn, uint8_t *payloadLenOut);
+
+/**
+ * @}
+ *
+ */
+otError otPlatRadioCcaConfigValue(otInstance *aInstance, otCCAModeConfig *aCcaConfig, uint8_t aSetValue);
+
+/**
+ * @}
+ *
+ */
+otError otPlatRadioGetFwVersionString(otInstance *aInstance, const char *fwVersion, uint8_t fwVersionLen);
+
+/**
+ * @}
+ *
+*/
+otError otPlatRadioIRThresholdConfig(otInstance *aInstance, otIRConfig *aIRConfig, uint8_t aSetValue);
 
 #ifdef __cplusplus
 } // end of extern "C"

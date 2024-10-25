@@ -254,6 +254,99 @@ public:
     otError GetIeeeEui64(uint8_t *aIeeeEui64);
 
     /**
+     * This method sets the factory-assigned IEEE EUI-64 for this transceiver.
+     *
+     * @param[in]  aInstance   The OpenThread instance structure.
+     * @param[out] aIeeeEui64  A pointer to the factory-assigned IEEE EUI-64.
+     *
+     * @retval  OT_ERROR_NONE               Succeeded.
+     * @retval  OT_ERROR_INVALID_STATE      Failed EUI64 is set by factory only except if OTP is not supported.
+     *
+     */
+    otError SetIeeeEui64(const otExtAddress &aIeeeEui64);
+
+    /**
+     * @brief Set the Tx Power Limit for 15.4
+     *
+     * @param txPowerLimit
+     * txPowerLimit (0 or higher than 22), No power backoff is applied
+     * txPowerLimit = 1 to 44, force TX power back off to txPowerLimit
+     * (txPowerLimit = 0.5dBm step, TX power back off : 0.5dBm step )
+     *
+     * @return otError
+     */
+    otError SetTxPowerLimit(uint8_t txPowerLimit);
+
+    /**
+     * @brief Get the Tx Power Limit for 15.4
+     *
+     * @param &txPowerLimit
+     * will contain the value set in IWx12
+     * (txPowerLimit = 0.5dBm step, TX power back off : 0.5dBm step )
+     *
+     * @return otError
+     */
+    otError GetTxPowerLimit(uint8_t &txPowerLimit);
+
+     /**
+     * @brief Set the Independent Reset configuration
+     *
+     * @param &mode
+     * will contain the value set in IWx12
+     * (0, 1, 2)
+     *
+     * @return otError
+     */
+    otError SetIRConfig(uint8_t mode);
+
+     /**
+     * @brief Get the Independent Reset configuration
+     *
+     * @param &mode
+     * will contain the value set in IWx12
+     * (0, 1, 2)
+     *
+     * @return otError
+     */
+    otError GetIRConfig(uint8_t &mode);
+
+    /**
+     * @brief GetMfgChannel
+     * @param channel
+     * @return otError
+     */
+    otError MfgCmd(uint8_t *payload, const uint8_t payloadLenIn, uint8_t &payloadLenOut);
+
+    /**
+     * @brief Set / Get the CCA Mode Configuration Values
+     *
+     * @param &aCcaConfig
+     * will contain the CCA Configuration values of datatype otCCAModeConfig.
+     *
+     * @return otError
+     */
+    otError CcaConfigValue(otCCAModeConfig &aCcaConfig, uint8_t aSetValue);
+
+   /**
+    * This method returns the fw version string.
+    *
+    * @param[out] fwVersion
+    *
+    * @returns otError
+    */
+    otError GetFwVersion(const char *fwVersion, uint8_t fwVersionLen);
+
+    /**
+    * This method sets the threshold time at which OOB toggle will trigger an IR
+    *
+    * @param &aIRConfig
+    * will contain the IR trigger Configuration values of datatype otIRConfig.
+    *
+    * @returns otError
+    */
+    otError IRThresholdConfig(otIRConfig &aIRConfig, uint8_t aSetValue);
+
+    /**
      * Sets the Extended Address for address filtering.
      *
      * @param[in] aExtAddress  A pointer to the IEEE 802.15.4 Extended Address stored in little-endian byte order.

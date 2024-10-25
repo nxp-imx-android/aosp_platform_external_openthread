@@ -69,6 +69,14 @@
 
 #include "lib/platform/reset_util.h"
 
+extern otError ProcessIRConfig(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessIRCmd(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessSetEui64(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessGetSetTxPowerLimit(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessMfgCommands(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessGetSetCcaCfg(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessGetFwVersion(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessGetSetIRThreshold(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 /**
  * Initializes NCP app.
  *
@@ -356,6 +364,14 @@ static const otCliCommand kCommands[] = {
     {"exit", ProcessExit},
 #endif
     {"netif", ProcessNetif},
+    {"ircfg", ProcessIRConfig},    //=> OutOfBand Independent Reset Configuration ircfg <1> means OOB mode
+    {"ircmd", ProcessIRCmd},       //=> InBand Independent Reset command
+    {"seteui64", ProcessSetEui64}, //=> Set ieee.802.15.4 MAC Address
+    {"txpwrlimit", ProcessGetSetTxPowerLimit}, //=> Set TX power limit for 15.4
+    {"mfgcmd", ProcessMfgCommands}, //=> Generic VSC for MFG RF commands
+    {"ccacfg", ProcessGetSetCcaCfg}, //=> Set/Get CCA configuration for 15.4 CCA Before Tx operation
+    {"fwversion", ProcessGetFwVersion}, //=> Get firmware version for 15.4
+    {"irthold", ProcessGetSetIRThreshold}   //=> OutOfBand Independent Reset Threshold configuration
 };
 
 int main(int argc, char *argv[])

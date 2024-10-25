@@ -1044,6 +1044,73 @@ otError otPlatRadioReceiveAt(otInstance *aInstance, uint8_t aChannel, uint32_t a
     return OT_ERROR_NOT_IMPLEMENTED;
 }
 
+void otPlatRadioSetIRConfig(otInstance *aInstance, uint8_t mode)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    SuccessOrDie(GetRadioSpinel().SetIRConfig(mode));
+}
+
+void otPlatRadioGetIRConfig(otInstance *aInstance, uint8_t* mode)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    SuccessOrDie(GetRadioSpinel().GetIRConfig(*mode));
+}
+
+void otPlatRadioSetIRCmd(otInstance *aInstance)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    SuccessOrDie(GetRadioSpinel().Set(SPINEL_PROP_VENDOR_NXP_IR_CMD, SPINEL_DATATYPE_UINT16_S));
+}
+
+otError otPlatRadioSetIeeeEui64(otInstance *aInstance, const otExtAddress *aIeeeEui64)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    otExtAddress addr;
+
+    for (size_t i = 0; i < sizeof(addr); i++)
+    {
+        addr.m8[i] = aIeeeEui64->m8[sizeof(addr) - 1 - i];
+    }
+
+    return GetRadioSpinel().SetIeeeEui64(*aIeeeEui64);
+}
+
+otError otPlatRadioSetTxPowerLimit(otInstance *aInstance, uint8_t txPowerLimit)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().SetTxPowerLimit(txPowerLimit);
+}
+
+otError otPlatRadioGetTxPowerLimit(otInstance *aInstance, uint8_t* txPowerLimit)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().GetTxPowerLimit(*txPowerLimit);
+}
+
+otError otPlatRadioMfgCommand(otInstance *aInstance, uint8_t *payload, const uint8_t payloadLenIn, uint8_t *payloadLenOut)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().MfgCmd(payload, payloadLenIn, *payloadLenOut);
+}
+
+otError otPlatRadioCcaConfigValue(otInstance *aInstance, otCCAModeConfig *aOtCCAModeConfig, uint8_t aSetValue)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().CcaConfigValue(*aOtCCAModeConfig, aSetValue);
+}
+
+otError otPlatRadioGetFwVersionString(otInstance *aInstance, const char *fwVersion, uint8_t fwVersionLen)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().GetFwVersion(fwVersion, fwVersionLen);
+}
+
+otError otPlatRadioIRThresholdConfig(otInstance *aInstance, otIRConfig *aotIRConfig, uint8_t aSetValue)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().IRThresholdConfig(*aotIRConfig, aSetValue);
+}
+
 #if OPENTHREAD_CONFIG_PLATFORM_BOOTLOADER_MODE_ENABLE
 otError otPlatResetToBootloader(otInstance *aInstance)
 {

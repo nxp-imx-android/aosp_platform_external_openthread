@@ -1102,6 +1102,111 @@ otError RadioSpinel::GetIeeeEui64(uint8_t *aIeeeEui64)
     return OT_ERROR_NONE;
 }
 
+otError RadioSpinel::SetIeeeEui64(const otExtAddress &aIeeeEui64)
+{
+    otExtAddress addr;
+    otError      error;
+
+    for (size_t i = 0; i < sizeof(addr); i++)
+    {
+        addr.m8[i] = aIeeeEui64.m8[sizeof(addr) - 1 - i];
+    }
+
+    SuccessOrExit(error = Set(SPINEL_PROP_VENDOR_NXP_SET_EUI64_CMD, SPINEL_DATATYPE_EUI64_S, addr.m8));
+    sIeeeEui64 = aIeeeEui64;
+exit:
+    return error;
+}
+
+otError RadioSpinel::SetTxPowerLimit(uint8_t txPowerLimit)
+{
+    otError error;
+    SuccessOrExit(error = Set(SPINEL_PROP_VENDOR_NXP_GET_SET_TXPOWERLIMIT_CMD, SPINEL_DATATYPE_UINT8_S, txPowerLimit));
+
+exit:
+    return error;
+}
+
+otError RadioSpinel::GetTxPowerLimit(uint8_t &txPowerLimit)
+{
+    otError error = Get(SPINEL_PROP_VENDOR_NXP_GET_SET_TXPOWERLIMIT_CMD, SPINEL_DATATYPE_UINT8_S, &txPowerLimit);
+    return error;
+}
+
+otError RadioSpinel::SetIRConfig(uint8_t mode)
+{
+    otError error = Set(SPINEL_PROP_VENDOR_NXP_IR_CONFIG, SPINEL_DATATYPE_UINT8_S, mode);
+    return error;
+}
+
+otError RadioSpinel::GetIRConfig(uint8_t &mode)
+{
+    otError error = Get(SPINEL_PROP_VENDOR_NXP_IR_CONFIG, SPINEL_DATATYPE_UINT8_S, &mode);
+    return error;
+}
+
+#define MAXBUFFERSIZE 16
+
+otError RadioSpinel::MfgCmd(uint8_t *payload, const uint8_t payloadLenIn, uint8_t &payloadLenOut)
+{
+    otError error;
+    uint8_t buffer[MAXBUFFERSIZE]; //temporary buffer used to be passed as arg of GetWithParam
+    spinel_ssize_t packed;
+
+    packed = spinel_datatype_pack(buffer, sizeof(buffer), SPINEL_DATATYPE_DATA_S, payload, payloadLenIn);
+    error = GetWithParam(SPINEL_CMD_VENDOR_NXP_MFG, buffer, static_cast<spinel_size_t>(packed), SPINEL_DATATYPE_DATA_S, payload, &payloadLenOut);
+
+    return error;
+}
+
+otError RadioSpinel::CcaConfigValue(otCCAModeConfig &aCcaConfig, uint8_t aSetValue)
+{
+    otError error;
+    uint8_t aCcaMode, aCca1Threshold, aCca2CorrThreshold, aCca2MinNumOfCorrTh;
+
+    if(aSetValue)
+    {
+        error = Set(SPINEL_PROP_VENDOR_NXP_GET_SET_CCA_CONFIGURE_CMD, SPINEL_DATATYPE_STRUCT_S(SPINEL_DATATYPE_UINT8_S
+                    SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_UINT8_S), (&aCcaConfig)->mCcaMode,
+                    (&aCcaConfig)->mCca1Threshold, (&aCcaConfig)->mCca2CorrThreshold, (&aCcaConfig)->mCca2MinNumOfCorrTh);
+    }
+    else
+    {
+        error = Get(SPINEL_PROP_VENDOR_NXP_GET_SET_CCA_CONFIGURE_CMD, SPINEL_DATATYPE_STRUCT_S(SPINEL_DATATYPE_UINT8_S
+                    SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_UINT8_S SPINEL_DATATYPE_UINT8_S), &aCcaMode, &aCca1Threshold,
+                    &aCca2CorrThreshold, &aCca2MinNumOfCorrTh);
+        (&aCcaConfig)->mCcaMode = aCcaMode;
+        (&aCcaConfig)->mCca1Threshold = aCca1Threshold;
+        (&aCcaConfig)->mCca2CorrThreshold = aCca2CorrThreshold;
+        (&aCcaConfig)->mCca2MinNumOfCorrTh = aCca2MinNumOfCorrTh;
+    }
+
+    return error;
+}
+
+otError RadioSpinel::IRThresholdConfig(otIRConfig &aIRConfig, uint8_t aSetValue)
+{
+   otError error;
+   uint16_t aIRThreshold;
+
+   if(aSetValue)
+   {
+       error = Set(SPINEL_PROP_VENDOR_NXP_IR_CONFIG_THRESHOLD, SPINEL_DATATYPE_STRUCT_S(SPINEL_DATATYPE_UINT16_S), (&aIRConfig)->mIRThreshold);
+   }
+   else
+   {
+       error = Get(SPINEL_PROP_VENDOR_NXP_IR_CONFIG_THRESHOLD, SPINEL_DATATYPE_STRUCT_S(SPINEL_DATATYPE_UINT16_S), &aIRThreshold);
+       (&aIRConfig)->mIRThreshold = aIRThreshold;
+   }
+   return error;
+}
+
+otError RadioSpinel::GetFwVersion(const char *fwVersion, uint8_t fwVersionLen)
+{
+    otError error = Get(SPINEL_PROP_VENDOR_NXP_GET_FW_VERSION_CMD, SPINEL_DATATYPE_UTF8_S, fwVersion, fwVersionLen);
+    return error;
+}
+
 otError RadioSpinel::SetExtendedAddress(const otExtAddress &aExtAddress)
 {
     otError error;
