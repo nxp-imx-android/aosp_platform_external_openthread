@@ -238,10 +238,11 @@ int SpiInterface::SetupGpioEvent(int         aFd,
 
 void SpiInterface::SetGpioValue(int aFd, uint8_t aValue)
 {
-    struct gpiohandle_data data;
-
-    data.values[0] = aValue;
-    VerifyOrDie(ioctl(aFd, GPIOHANDLE_SET_LINE_VALUES_IOCTL, &data) != -1, OT_EXIT_ERROR_ERRNO);
+    OT_UNUSED_VARIABLE(aFd);
+    OT_UNUSED_VARIABLE(aValue);
+    // struct gpiohandle_data data;
+    // data.values[0] = aValue;
+    // VerifyOrDie(ioctl(aFd, GPIOHANDLE_SET_LINE_VALUES_IOCTL, &data) != -1, OT_EXIT_ERROR_ERRNO);
 }
 
 uint8_t SpiInterface::GetGpioValue(int aFd)
