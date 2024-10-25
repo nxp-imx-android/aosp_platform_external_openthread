@@ -210,7 +210,7 @@ void RadioSpinel::ResetRcp(bool aResetRadio)
 
     mWaitingKey = SPINEL_PROP_LAST_STATUS;
 
-    if (aResetRadio && (SendReset(SPINEL_RESET_STACK) == OT_ERROR_NONE) && (!sIsReady) &&
+    if (aResetRadio && (SendReset(SPINEL_RESET_STACK) == OT_ERROR_NONE) &&
         (WaitResponse(false) == OT_ERROR_NONE))
     {
         VerifyOrExit(sIsReady, resetDone = false);
