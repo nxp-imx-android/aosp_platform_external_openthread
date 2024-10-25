@@ -172,6 +172,7 @@ SpiInterface::~SpiInterface(void) { Deinit(); }
 
 void SpiInterface::Deinit(void)
 {
+    LogDebg("Deinit: close %s%s%s", (mSpiDevFd >= 0)?("SpiDev "):(""), (mResetGpioValueFd >= 0)?("ResetGpio "):(""), (mIntGpioValueFd >= 0)?("IntGpio "):(""));
     if (mSpiDevFd >= 0)
     {
         close(mSpiDevFd);

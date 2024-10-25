@@ -183,6 +183,7 @@ HdlcInterface::~HdlcInterface(void) { Deinit(); }
 
 void HdlcInterface::Deinit(void)
 {
+    LogDebg("Deinit: close %s", (mSockFd >= 0)?("Radio "):(""));
     CloseFile();
 
     mReceiveFrameCallback = nullptr;

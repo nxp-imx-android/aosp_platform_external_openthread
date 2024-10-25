@@ -60,6 +60,8 @@
 otInstance *gInstance = nullptr;
 bool        gDryRun   = false;
 
+void platformDeinit(void);
+
 #if OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE || OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
 static void processStateChange(otChangedFlags aFlags, void *aContext)
 {
@@ -134,6 +136,8 @@ void platformInit(otPlatformConfig *aPlatformConfig)
 
     platformAlarmInit(aPlatformConfig->mSpeedUpFactor, aPlatformConfig->mRealTimeSignal);
     platformRadioInit(get802154RadioUrl(aPlatformConfig));
+
+    atexit(&platformDeinit);
 
     // For Dry-Run option, only init the radio.
     VerifyOrExit(!aPlatformConfig->mDryRun);
