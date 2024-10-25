@@ -2025,6 +2025,7 @@ otError RadioSpinel::Enable(otInstance *aInstance)
     SuccessOrExit(error = Set(SPINEL_PROP_MAC_15_4_PANID, SPINEL_DATATYPE_UINT16_S, mPanId));
     SuccessOrExit(error = Set(SPINEL_PROP_MAC_15_4_SADDR, SPINEL_DATATYPE_UINT16_S, mShortAddress));
     SuccessOrExit(error = Get(SPINEL_PROP_PHY_RX_SENSITIVITY, SPINEL_DATATYPE_INT8_S, &mRxSensitivity));
+    SuccessOrExit(error = Set(SPINEL_PROP_PHY_RSSI, SPINEL_DATATYPE_INT8_S));
 
     mState = kStateSleep;
 
