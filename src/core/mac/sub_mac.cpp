@@ -76,7 +76,7 @@ void SubMac::Init(void)
     mTransmitRetries = 0;
     mShortAddress    = kShortAddrInvalid;
     mExtAddress.Clear();
-    mRxOnWhenIdle      = true;
+    mRxOnWhenIdle      = false; //mRxOnWhenIdle shall be false, as its init value is false.
     mEnergyScanMaxRssi = Radio::kInvalidRssi;
     mEnergyScanEndTime = Time{0};
 #if OPENTHREAD_CONFIG_MAC_ADD_DELAY_ON_NO_ACK_ERROR_BEFORE_RETRY
@@ -567,12 +567,13 @@ void SubMac::BeginTransmit(void)
     VerifyOrExit(mState == kStateCsmaBackoff);
 #endif
 
-    if ((mRadioCaps & OT_RADIO_CAPS_SLEEP_TO_TX) == 0)
+/* - Enable RX only when mRxOnWhenIdle=0 which is one-to-one mapped with mRxOnWhenBackoff, and OT_RADIO_CAPS_SLEEP_TO_TX=0.
+ * - Don't send spinel SET CHANNEL CMD followed by starting Rx on secondary channel just before CSL Tx, which may take few mSec, and this will block the reception on the Primary channel.*/
+    if ((mRadioCaps & OT_RADIO_CAPS_SLEEP_TO_TX) == 0 && !mRxOnWhenIdle)
     {
         SuccessOrAssert(Get<Radio>().Receive(mTransmitFrame.GetChannel()));
     }
 
-    SetState(kStateTransmit);
 
     if (mPcapCallback.IsSet())
     {
