@@ -1760,6 +1760,19 @@ otError RadioSpinel::RequestV(uint32_t command, spinel_prop_key_t aKey, const ch
     VerifyOrExit(tid > 0, error = OT_ERROR_BUSY);
 
     error = SendCommand(command, aKey, tid, aFormat, aArgs);
+
+    if( mTxRadioTid && (error == OT_ERROR_BUSY) )
+    {
+        // Handle RETRY mechanism in case of VALUE_SET / STREAM_RAW failed transaction
+        error = WaitResponse();
+
+        if( error == OT_ERROR_NONE )
+        {
+            // Call again the current command. SPI interface shall be available now !
+            error = SendCommand(command, aKey, tid, aFormat, aArgs);
+        }
+    }
+
     SuccessOrExit(error);
 
     if (aKey == SPINEL_PROP_STREAM_RAW)
