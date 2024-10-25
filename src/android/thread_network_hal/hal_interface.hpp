@@ -145,6 +145,12 @@ public:
     uint32_t GetBusSpeed(void) const override;
 
     /**
+     * This method sets the bus speed between the host and the radio.
+     *
+     */
+    void SetBusSpeed(uint32_t aSpeed) override { OT_UNUSED_VARIABLE(aSpeed); }
+
+    /**
      * This method hardware resets the RCP. It will be called after a software reset fails.
      *
      * @retval OT_ERROR_NONE            Successfully reset the RCP.
