@@ -2181,7 +2181,39 @@ uint64_t RadioSpinel::GetNow(void)
    return (mIsTimeSynced) ? (otPlatTimeGet() + mRadioTimeOffset) : UINT64_MAX;
 }
 
-uint32_t RadioSpinel::GetBusSpeed(void) const { return mSpinelInterface->GetBusSpeed(); }
+uint32_t RadioSpinel::GetBusSpeed(void)
+{
+    uint32_t  speed  = 0;
+    Get(SPINEL_PROP_VENDOR_NXP_GET_SET_RCP_FREQUENCY_CMD, SPINEL_DATATYPE_UINT32_S, &speed);
+    return speed;
+}
+
+#ifndef MIN
+#define MIN( x, y ) ( ( x ) < ( y ) ? ( x ) : ( y ) )
+#endif
+
+otError RadioSpinel::SetBusSpeed(uint32_t speed)
+{
+    uint32_t current = mSpinelInterface->GetBusSpeed();
+    otError  error = OT_ERROR_NONE;
+
+    mSpinelInterface->SetBusSpeed(MIN(current, speed));
+
+    error = Set(SPINEL_PROP_VENDOR_NXP_GET_SET_RCP_FREQUENCY_CMD, SPINEL_DATATYPE_UINT32_S, speed);
+
+    if( error == OT_ERROR_NONE )
+    {
+        // Apply new frequency
+        mSpinelInterface->SetBusSpeed(speed);
+    }
+    else
+    {
+        // Back to old frequency
+        mSpinelInterface->SetBusSpeed(current);
+    }
+
+    return error;
+}
 
 void RadioSpinel::HandleRcpUnexpectedReset(spinel_status_t aStatus)
 {

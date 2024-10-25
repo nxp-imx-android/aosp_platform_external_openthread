@@ -140,7 +140,15 @@ public:
      * @returns   Bus speed in bits/second.
      *
      */
-    uint32_t GetBusSpeed(void) const { return ((mSpiDevFd >= 0) ? mSpiSpeedHz : 0); }
+    uint32_t GetBusSpeed(void) const override { return ((mSpiDevFd >= 0) ? mSpiSpeedHz : 0); }
+
+    /**
+     * This method returns the bus speed between the host and the radio.
+     *
+     * @returns   Bus speed in bits/second.
+     *
+     */
+    void SetBusSpeed(uint32_t aSpeed) override { ((mSpiDevFd >= 0) ? mSpiSpeedHz = aSpeed : mSpiSpeedHz = 0); }
 
     /**
      * Hardware resets the RCP.
@@ -250,6 +258,7 @@ private:
     uint16_t mSpiSlaveDataLen;
 
     bool mDidRxFrame;
+    uint32_t mSpiRxDiscard;
 
     otRcpInterfaceMetrics mInterfaceMetrics;
 

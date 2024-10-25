@@ -132,6 +132,14 @@ public:
      */
     virtual uint32_t GetBusSpeed(void) const = 0;
 
+     /**
+     * This method sets the bus speed between the host and the radio.
+     *
+     * @returns   Bus speed in bits/second.
+     *
+     */
+    virtual void SetBusSpeed(uint32_t aSpeed) = 0;
+
     /**
      * Hardware resets the RCP.
      *
@@ -139,6 +147,7 @@ public:
      * @retval OT_ERROR_NOT_IMPLEMENT   The hardware reset is not implemented.
      *
      */
+
     virtual otError HardwareReset(void) = 0;
 
     /**

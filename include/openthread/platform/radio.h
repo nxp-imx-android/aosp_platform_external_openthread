@@ -755,6 +755,18 @@ uint64_t otPlatRadioGetNow(otInstance *aInstance);
 uint32_t otPlatRadioGetBusSpeed(otInstance *aInstance);
 
 /**
+ * Set the bus speed in bits/second between the host and the radio chip.
+ *
+ * @param[in]   aInstance    A pointer to an OpenThread instance.
+ * @param[in]   aSpeed       The SPI Bus Speed request.
+ *
+ * @returns The bus speed in bits/second between the host and the radio chip.
+ *          Return 0 when the MAC and above layer and Radio layer resides on the same chip.
+ *
+ */
+otError otPlatRadioSetBusSpeed(otInstance *aInstance, uint32_t aSpeed);
+
+/**
  * @}
  *
  */

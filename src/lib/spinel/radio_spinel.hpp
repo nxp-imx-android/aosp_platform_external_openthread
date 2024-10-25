@@ -971,7 +971,16 @@ public:
      * @returns   bus speed in bits/second.
      *
      */
-    uint32_t GetBusSpeed(void) const;
+    uint32_t GetBusSpeed(void);
+
+    /**
+     * This method sets the bus speed between the host and the radio.
+     *
+     * @retval  OT_ERROR_NONE           Successfully set the spi frequency.
+     * @retval  OT_ERROR_INVALID_ARGS   frequency is not in valid range.
+     *
+     */
+    otError SetBusSpeed(uint32_t aSpeed);
 
     /**
      * Sets the max transmit power.

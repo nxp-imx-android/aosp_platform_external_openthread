@@ -43,6 +43,7 @@
 #include <unistd.h>
 
 #include <openthread/cli.h>
+#include <openthread/thread.h>
 
 #include "cli/cli_config.h"
 #include "common/code_utils.hpp"
@@ -646,6 +647,58 @@ otError ProcessGetFwVersion(void *aContext, uint8_t aArgsLength, char *aArgs[])
     return OT_ERROR_NONE;
 }
 
+otError ProcessGetSetSpiFrequency(void *aContext, uint8_t aArgsLength, char *aArgs[])
+{
+    OT_UNUSED_VARIABLE(aArgs);
+
+    if ( aArgsLength == 0 )
+    {
+        uint32_t speed = otPlatRadioGetBusSpeed((otInstance*)aContext);
+
+        switch(speed)
+        {
+            case 1: //OT_RADIO_HIGH_BUS_SPEED
+                otCliOutputFormat("Get => RCP supports SPI Bus Speed until 10MHz\r\n");
+            break;
+            case 2: //OT_RADIO_FULL_BUS_SPEED
+                otCliOutputFormat("Get => RCP supports SPI Bus Speed > 10MHz\r\n");
+            break;
+            case 0: //OT_RADIO_DEFAULT_BUS_SPEED
+            default:
+                otCliOutputFormat("Get => RCP supports SPI Bus Speed until 4MHz\r\n");
+            break;
+        }
+    }
+    else if ( aArgsLength == 1 )
+    {
+        uint32_t speed = (uint32_t)atoi(aArgs[0]);
+
+        if( (speed >= 10000) && (speed <= 10000000) )
+        {
+            if( otThreadGetDeviceRole((otInstance*)aContext) == OT_DEVICE_ROLE_DISABLED )
+            {
+                if( otPlatRadioSetBusSpeed((otInstance*)aContext, speed) != OT_ERROR_NONE )
+                {
+                    otCliOutputFormat("Get/Set SpiFrequency FAILED! Invalid input <speed %d>\n", speed);
+                }
+            }
+            else
+            {
+                otCliOutputFormat("Get/Set SpiFrequency FAILED! Invalid STATE - %s -\n", otThreadDeviceRoleToString(otThreadGetDeviceRole((otInstance*)aContext)));
+            }
+        }
+        else
+        {
+            otCliOutputFormat("Set SpiFrequency FAILED! Invalid speed range - required [10000 (10kHz) : 10000000 (10MHz)]>\n");
+        }
+    }
+    else
+    {
+        otCliOutputFormat("Get/Set SpiFrequency FAILED! Invalid input <speed>\n");
+    }
+    return OT_ERROR_NONE;
+}
+
 otError ProcessGetSetIRThreshold(void *aContext, uint8_t aArgsLength, char *aArgs[])
 {
     otIRConfig aIRConfig;
@@ -689,6 +742,7 @@ static const otCliCommand kCommands[] = {
     {"mfgcmd", ProcessMfgCommands}, //=> Generic VSC for MFG RF commands
     {"ccacfg", ProcessGetSetCcaCfg}, //=> Set/Get CCA configuration for 15.4 CCA Before Tx operation
     {"fwversion", ProcessGetFwVersion}, //=> Get firmware version for 15.4
+    {"spifreq", ProcessGetSetSpiFrequency},  //=> Get/Set SPI frequency supported by RCP
     {"irthold", ProcessGetSetIRThreshold}   //=> OutOfBand Independent Reset Threshold configuration
 };
 } //extern "C"

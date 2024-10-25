@@ -81,6 +81,7 @@ SpiInterface::SpiInterface(const Url::Url &aRadioUrl)
     , mDidPrintRateLimitLog(false)
     , mSpiSlaveDataLen(0)
     , mDidRxFrame(false)
+    , mSpiRxDiscard(0)
 {
 }
 
@@ -91,6 +92,7 @@ void SpiInterface::ResetStates(void)
     mSpiTxPayloadSize     = 0;
     mDidPrintRateLimitLog = false;
     mSpiSlaveDataLen      = 0;
+    mSpiRxDiscard    = 0;
     memset(mSpiTxFrameBuffer, 0, sizeof(mSpiTxFrameBuffer));
     memset(&mInterfaceMetrics, 0, sizeof(mInterfaceMetrics));
     mInterfaceMetrics.mRcpInterfaceType = kSpinelInterfaceTypeSpi;
@@ -521,6 +523,7 @@ otError SpiInterface::PushPullSpi(void)
             mInterfaceMetrics.mTransferredGarbageFrameCount++;
             mSpiTxRefusedCount++;
             mSpiSlaveDataLen = 0;
+            mSpiRxDiscard    = 0;
 
             LogWarn("Garbage in header : %02X %02X %02X %02X %02X", spiRxFrame[0], spiRxFrame[1], spiRxFrame[2],
                     spiRxFrame[3], spiRxFrame[4]);
@@ -543,21 +546,35 @@ otError SpiInterface::PushPullSpi(void)
         // Handle received packet, if any.
         if ((mSpiSlaveDataLen != 0) && (mSpiSlaveDataLen <= txFrame.GetHeaderAcceptLen()))
         {
-            mInterfaceMetrics.mRxFrameByteCount += mSpiSlaveDataLen;
-            mSpiSlaveDataLen = 0;
-            mInterfaceMetrics.mRxFrameCount++;
-            successfulExchanges++;
+            // WAR - Discard first transaction which as transaction greater than 32 bytes with RX data available (as RCP truncated it)
+            if( (mSpiRxDiscard == 0) && (txFrame.GetHeaderAcceptLen() > mSpiSmallPacketSize) && (txFrame.GetHeaderDataLen() == txFrame.GetHeaderAcceptLen()) )
+            {
+                LogWarn("WAR RX Frame length (0x%02X) truncated (Header was 0x%02X )", txFrame.GetHeaderAcceptLen(), mSpiSlaveDataLen);
+                mSpiRxDiscard++;
+            }
+            else
+            {
+                mInterfaceMetrics.mRxFrameByteCount += mSpiSlaveDataLen;
+                mSpiSlaveDataLen = 0;
+                mInterfaceMetrics.mRxFrameCount++;
+                successfulExchanges++;
+                mSpiRxDiscard    = 0;
 
-            // Set the skip length to skip align bytes and SPI frame header.
-            SuccessOrExit(error = mRxFrameBuffer->SetSkipLength(skipAlignAllowanceLength + kSpiFrameHeaderSize));
-            // Set the received frame length.
-            SuccessOrExit(error = mRxFrameBuffer->SetLength(rxFrame.GetHeaderDataLen()));
+                // Set the skip length to skip align bytes and SPI frame header.
+                SuccessOrExit(error = mRxFrameBuffer->SetSkipLength(skipAlignAllowanceLength + kSpiFrameHeaderSize));
+                // Set the received frame length.
+                SuccessOrExit(error = mRxFrameBuffer->SetLength(rxFrame.GetHeaderDataLen()));
 
-            // Upper layer will free the frame buffer.
-            discardRxFrame = false;
+                // Upper layer will free the frame buffer.
+                discardRxFrame = false;
 
-            mDidRxFrame = true;
-            mReceiveFrameCallback(mReceiveFrameContext);
+                mDidRxFrame = true;
+                mReceiveFrameCallback(mReceiveFrameContext);
+            }
+        }
+        else if( mSpiSlaveDataLen != 0 )
+        {
+            mSpiRxDiscard++;
         }
     }
 

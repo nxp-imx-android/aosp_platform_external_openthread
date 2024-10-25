@@ -139,7 +139,13 @@ public:
      * @returns   Bus speed in bits/second.
      *
      */
-    uint32_t GetBusSpeed(void) const { return mBaudRate; }
+    uint32_t GetBusSpeed(void) const override { return mBaudRate; }
+
+    /**
+     * This method sets the bus speed between the host and the radio.
+     *
+     */
+    void SetBusSpeed(uint32_t aSpeed) override { OT_UNUSED_VARIABLE(aSpeed); }
 
     /**
      * Hardware resets the RCP.

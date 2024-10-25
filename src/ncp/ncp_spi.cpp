@@ -340,9 +340,11 @@ void NcpSpi::PrepareTxFrame(void)
     }
 }
 
+#define OT_PLATFORM_RING_BUFFER_TAG (0xAA)
+
 void NcpSpi::HandleRxFrame(void)
 {
-    SpiFrame recvFrame(mReceiveFrame);
+    SpiFrame recvFrame( (mReceiveFrame[4] == OT_PLATFORM_RING_BUFFER_TAG) ? (uint8_t*)(*(uint32_t*)mReceiveFrame) : mReceiveFrame );
     SpiFrame sendFrame(mSendFrame);
 
     // Pass the received frame to base class to process.

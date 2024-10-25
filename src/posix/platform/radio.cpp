@@ -934,6 +934,12 @@ uint32_t otPlatRadioGetBusSpeed(otInstance *aInstance)
     return GetRadioSpinel().GetBusSpeed();
 }
 
+otError otPlatRadioSetBusSpeed(otInstance *aInstance, uint32_t aSpeed)
+{
+    OT_UNUSED_VARIABLE(aInstance);
+    return GetRadioSpinel().SetBusSpeed(aSpeed);
+}
+
 #if OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE || OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE
 uint8_t otPlatRadioGetCslAccuracy(otInstance *aInstance)
 {

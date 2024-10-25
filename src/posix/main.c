@@ -76,6 +76,7 @@ extern otError ProcessGetSetTxPowerLimit(void *aContext, uint8_t aArgsLength, ch
 extern otError ProcessMfgCommands(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 extern otError ProcessGetSetCcaCfg(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 extern otError ProcessGetFwVersion(void *aContext, uint8_t aArgsLength, char *aArgs[]);
+extern otError ProcessGetSetSpiFrequency(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 extern otError ProcessGetSetIRThreshold(void *aContext, uint8_t aArgsLength, char *aArgs[]);
 /**
  * Initializes NCP app.
@@ -371,6 +372,7 @@ static const otCliCommand kCommands[] = {
     {"mfgcmd", ProcessMfgCommands}, //=> Generic VSC for MFG RF commands
     {"ccacfg", ProcessGetSetCcaCfg}, //=> Set/Get CCA configuration for 15.4 CCA Before Tx operation
     {"fwversion", ProcessGetFwVersion}, //=> Get firmware version for 15.4
+    {"spifreq", ProcessGetSetSpiFrequency},  //=> Get/Set SPI frequency supported by RCP
     {"irthold", ProcessGetSetIRThreshold}   //=> OutOfBand Independent Reset Threshold configuration
 };
 
