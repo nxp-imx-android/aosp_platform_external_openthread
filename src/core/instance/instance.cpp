@@ -432,6 +432,7 @@ void Instance::FactoryReset(void)
     Get<KeyManager>().DestroyTemporaryKeys();
     Get<KeyManager>().DestroyPersistentKeys();
 #endif
+    otPlatRadioSetTransmitPower(this,0);
     otPlatReset(this);
 }
 
