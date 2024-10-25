@@ -2069,7 +2069,12 @@ exit:
 #endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
 }
 
-uint64_t RadioSpinel::GetNow(void) { return (mIsTimeSynced) ? (otPlatTimeGet() + mRadioTimeOffset) : UINT64_MAX; }
+uint64_t RadioSpinel::GetNow(void)
+{
+   LogDebg("mIsTimeSynced = %d, otPlatTimeGet = %llu, mRadioTimeOffset = %llu",mIsTimeSynced, static_cast<long long unsigned int>(otPlatTimeGet()), static_cast<long long unsigned int>(mRadioTimeOffset));
+
+   return (mIsTimeSynced) ? (otPlatTimeGet() + mRadioTimeOffset) : UINT64_MAX;
+}
 
 uint32_t RadioSpinel::GetBusSpeed(void) const { return mSpinelInterface->GetBusSpeed(); }
 

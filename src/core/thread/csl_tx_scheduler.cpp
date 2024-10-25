@@ -170,6 +170,7 @@ uint32_t CslTxScheduler::GetNextCslTransmissionDelay(const Child &aChild,
 
     aDelayFromLastRx = static_cast<uint32_t>(nextTxWindow - aChild.GetLastRxTimestamp());
 
+    LogInfo("CSL radioNow = %lu, periodInUS = %hu,firstTXWindow = %lu, nextTxWindow = %lu, aDelayFromLastRx = %u, lastRxTimeStamp = %lu", radioNow, periodInUs, firstTxWindow, nextTxWindow, aDelayFromLastRx,aChild.GetLastRxTimestamp());
     return static_cast<uint32_t>(nextTxWindow - radioNow - aAheadUs);
 }
 
