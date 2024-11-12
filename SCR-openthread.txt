@@ -1,0 +1,7 @@
+Repository:                platform/external/openthread
+Outgoing License:          BSD-3-clause
+License File:              LICENSE
+Description and comments:  An open-source implementation of the networking protocol
+Release Location:          https://github.com/nxp-imx-android/aosp_platform_external_openthread
+Origin:                    NXP (BSD-3-clause)
+                           The Android Open Source Project (Apache-2.0) - https://source.android.com/
